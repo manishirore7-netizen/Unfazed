@@ -11,6 +11,7 @@ const therapistSchema = new mongoose.Schema(
       type: String,
       required: [true, "Name is required"],
       trim: true,
+      maxlength: [100, "Name cannot exceed 100 characters"],
     },
 
     // Unique contact and login email
@@ -45,6 +46,7 @@ const therapistSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: "",
+      maxlength: [2500, "Bio cannot exceed 2500 characters"],
     },
 
     // Areas of clinical focus (e.g., ["Anxiety", "CBT", "Trauma"])
