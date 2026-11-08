@@ -4,6 +4,8 @@ import ProtectedRoute from "./ProtectedRoute";
 import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
 import DashboardHome from "../pages/DashboardHome";
+import ProfileEditorPage from "../pages/therapist/ProfileEditorPage";
+import PublicProfilePage from "../pages/therapist/PublicProfilePage";
 
 // Helper component that redirects authenticated therapists away from public auth pages
 function PublicRoute({ children }) {
@@ -33,6 +35,16 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Protected Therapist Profile Editor */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfileEditorPage />
+          </ProtectedRoute>
+        }
+      />
+
       {/* Public Authentication Pages */}
       <Route
         path="/login"
@@ -50,6 +62,9 @@ export default function AppRoutes() {
           </PublicRoute>
         }
       />
+
+      {/* Public Branded Therapist Profile */}
+      <Route path="/:slug" element={<PublicProfilePage />} />
 
       {/* Catch-all redirect */}
       <Route path="*" element={<Navigate to="/" replace />} />

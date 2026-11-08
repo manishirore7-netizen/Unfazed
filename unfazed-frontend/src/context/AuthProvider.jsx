@@ -97,6 +97,11 @@ export default function AuthProvider({ children }) {
     setTherapist(null);
   };
 
+  // Update therapist profile in context state to prevent stale data
+  const updateTherapist = (updatedData) => {
+    setTherapist((prev) => (prev ? { ...prev, ...updatedData } : updatedData));
+  };
+
   const value = {
     therapist,
     token,
@@ -105,6 +110,7 @@ export default function AuthProvider({ children }) {
     login,
     register,
     logout,
+    updateTherapist,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
