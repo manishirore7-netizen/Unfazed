@@ -5,6 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "node tests/therapistProfile.test.js",
+    "test:models": "node tests/schedulingModels.test.js",
+    "test:calculator": "node tests/slotCalculator.test.js",
+    "test:scheduling": "node tests/schedulingIntegration.test.js",
+    "test:all": "node tests/schedulingModels.test.js && node tests/slotCalculator.test.js && node tests/schedulingIntegration.test.js",
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
