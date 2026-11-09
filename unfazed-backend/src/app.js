@@ -5,8 +5,28 @@ const therapistRoutes = require("./routes/therapistRoutes");
 
 const app = express();
 
+const allowedOrigins = ["http://localhost:5173"];
+
+if (process.env.CLIENT_URL) {
+  process.env.CLIENT_URL.split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean)
+    .forEach((origin) => {
+      if (!allowedOrigins.includes(origin)) {
+        allowedOrigins.push(origin);
+      }
+    });
+}
+
+const corsOptions = {
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes
