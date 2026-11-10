@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import axiosInstance from "../../api/axiosInstance";
+import BookingModal from "../../components/scheduling/BookingModal";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -11,7 +12,7 @@ export default function PublicProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState(null);
-  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
 
   // 1. Fetch public therapist profile by slug
   useEffect(() => {
@@ -229,10 +230,10 @@ export default function PublicProfilePage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setShowInquiryModal(true)}
+              onClick={() => setIsBookingOpen(true)}
               className="text-xs font-medium bg-[#1B3B2B] text-white hover:bg-[#234E39] px-4 py-2 rounded-xl transition-colors cursor-pointer shadow-sm"
             >
-              Contact & Info
+              Book a Session
             </button>
           </div>
         </div>
@@ -286,10 +287,10 @@ export default function PublicProfilePage() {
             <div className="pt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <button
                 type="button"
-                onClick={() => setShowInquiryModal(true)}
+                onClick={() => setIsBookingOpen(true)}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-[#1B3B2B] text-white hover:bg-[#234E39] font-medium text-sm transition-all shadow-sm cursor-pointer"
               >
-                <span>Contact & Scheduling Info</span>
+                <span>Book a Session</span>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
@@ -403,8 +404,15 @@ export default function PublicProfilePage() {
                   An introductory conversation to discuss therapeutic fit, mutual expectations, and next steps before beginning therapy.
                 </p>
               </div>
-              <div className="pt-4 mt-6 border-t border-[#F0EAE2] text-[11px] font-medium text-[#65766C]">
-                Introductory conversation
+              <div className="pt-4 mt-6 border-t border-[#F0EAE2] flex items-center justify-between text-[11px] font-medium text-[#65766C]">
+                <span>Introductory conversation</span>
+                <button
+                  type="button"
+                  onClick={() => setIsBookingOpen(true)}
+                  className="text-[#1B3B2B] hover:underline underline-offset-2 font-semibold cursor-pointer"
+                >
+                  Book Session →
+                </button>
               </div>
             </div>
           </div>
@@ -463,9 +471,28 @@ export default function PublicProfilePage() {
             </div>
           </section>
         )}
+
+        {/* F. SCHEDULING CALL TO ACTION BANNER */}
+        <section className="bg-gradient-to-r from-[#1B3B2B] to-[#24523B] rounded-3xl p-8 sm:p-12 text-[#FAF7F2] flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
+          <div className="flex flex-col gap-2 text-center sm:text-left">
+            <h3 className="text-2xl sm:text-3xl font-serif font-medium text-white">
+              Schedule a Session
+            </h3>
+            <p className="text-xs sm:text-sm text-[#D7E3DC] max-w-lg leading-relaxed">
+              Choose an available time slot directly on {therapist.name}&apos;s calendar with instant booking confirmation.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsBookingOpen(true)}
+            className="px-6 py-3.5 rounded-xl bg-[#FAF7F2] text-[#1B3B2B] hover:bg-white font-medium text-sm transition-all shadow-sm cursor-pointer whitespace-nowrap shrink-0"
+          >
+            Book an Appointment
+          </button>
+        </section>
       </main>
 
-      {/* F. FOOTER */}
+      {/* G. FOOTER */}
       <footer className="w-full border-t border-[#E8DFD3] bg-white py-10 px-6 mt-16">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-[#717E76]">
           <div className="flex items-center gap-2">
@@ -493,34 +520,12 @@ export default function PublicProfilePage() {
         </div>
       </footer>
 
-      {/* Booking Notice Modal (Informational for Module 1) */}
-      {showInquiryModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white border border-[#E9DFD2] rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-xl text-center">
-            <div className="w-12 h-12 rounded-full bg-[#EBF3ED] text-[#1E4D32] flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-
-            <h3 className="text-xl font-serif font-medium text-[#152B20] mb-2">
-              Scheduling Information
-            </h3>
-
-            <p className="text-xs sm:text-sm text-[#4F5E55] leading-relaxed mb-6">
-              Online client scheduling and interactive calendar bookings for <strong>{therapist.name}</strong> will be enabled in a future update. This page currently provides profile information only.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setShowInquiryModal(false)}
-              className="w-full px-5 py-2.5 rounded-xl bg-[#1B3B2B] text-white hover:bg-[#234E39] text-xs font-medium transition-colors cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Interactive Client Booking Modal */}
+      <BookingModal
+        therapist={therapist}
+        isOpen={isBookingOpen}
+        onClose={() => setIsBookingOpen(false)}
+      />
     </div>
   );
 }

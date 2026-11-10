@@ -171,6 +171,12 @@ export default function ProfileEditorPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              to="/schedule"
+              className="text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Schedule & Availability
+            </Link>
             <span className="text-xs text-[#717E76] hidden sm:inline">
               {therapist?.email}
             </span>

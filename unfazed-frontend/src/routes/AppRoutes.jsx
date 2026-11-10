@@ -5,6 +5,7 @@ import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
 import DashboardHome from "../pages/DashboardHome";
 import ProfileEditorPage from "../pages/therapist/ProfileEditorPage";
+import ScheduleManagerPage from "../pages/therapist/ScheduleManagerPage";
 import PublicProfilePage from "../pages/therapist/PublicProfilePage";
 
 // Helper component that redirects authenticated therapists away from public auth pages
@@ -41,6 +42,16 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProfileEditorPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected Therapist Schedule Manager */}
+      <Route
+        path="/schedule"
+        element={
+          <ProtectedRoute>
+            <ScheduleManagerPage />
           </ProtectedRoute>
         }
       />

@@ -1,8 +1,61 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
+import axiosInstance from "../api/axiosInstance";
+import { formatUtcDate, formatUtcTimeRange12h } from "../utils/dateHelpers";
 
 export default function DashboardHome() {
   const { therapist, logout } = useAuth();
+
+  const [upcomingSessions, setUpcomingSessions] = useState([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [sessionsError, setSessionsError] = useState("");
+  const [practiceTimezone, setPracticeTimezone] = useState("Asia/Kolkata");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Fetch upcoming bookings and practice timezone
+  useEffect(() => {
+    let isMounted = true;
+
+    Promise.allSettled([
+      axiosInstance.get("/scheduling/bookings"),
+      axiosInstance.get("/scheduling/availability"),
+    ])
+      .then(([bookingsRes, availRes]) => {
+        if (!isMounted) return;
+
+        if (availRes.status === "fulfilled" && availRes.value.data?.data?.timezone) {
+          setPracticeTimezone(availRes.value.data.data.timezone);
+        }
+
+        if (bookingsRes.status === "fulfilled") {
+          if (Array.isArray(bookingsRes.value.data?.data)) {
+            const now = new Date();
+            const upcoming = bookingsRes.value.data.data
+              .filter((b) => b.status === "confirmed" && new Date(b.startTime) >= now)
+              .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+            setUpcomingSessions(upcoming);
+          } else {
+            setSessionsError("Unexpected data format received for bookings.");
+          }
+        } else if (bookingsRes.status === "rejected") {
+          setSessionsError(
+            bookingsRes.reason.response?.data?.message ||
+              bookingsRes.reason.message ||
+              "Failed to load upcoming sessions."
+          );
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingSessions(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshKey]);
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#1C2520] flex flex-col font-sans">
@@ -43,6 +96,26 @@ export default function DashboardHome() {
                 {therapist?.email}
               </span>
             </div>
+
+            <Link
+              to="/schedule"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <span>Schedule</span>
+            </Link>
 
             <Link
               to="/profile"
@@ -102,6 +175,112 @@ export default function DashboardHome() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
               </svg>
             </Link>
+          </div>
+
+          {/* Upcoming Sessions Section */}
+          <div className="bg-[#FAF8F5] border border-[#EBE3D7] rounded-xl p-6 flex flex-col gap-4 mb-8">
+            <div className="flex items-center justify-between border-b border-[#EAE2D6] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-[#EBF3ED] text-[#1E4D32] flex items-center justify-center">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#637269]">
+                  Upcoming Sessions
+                </h2>
+                {!isLoadingSessions && !sessionsError && upcomingSessions.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EBF3ED] text-[#1E4D32]">
+                    {upcomingSessions.length} total
+                  </span>
+                )}
+              </div>
+
+              <Link
+                to="/schedule?tab=appointments"
+                className="text-xs font-medium text-[#1B3B2B] hover:underline underline-offset-4 flex items-center gap-1"
+              >
+                <span>View all in Schedule</span>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+
+            {/* Content: Loading / Error / Empty / List */}
+            {isLoadingSessions ? (
+              <div className="flex flex-col gap-2.5">
+                {[1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="h-16 bg-white rounded-lg animate-pulse border border-[#EDE5DA]"
+                  ></div>
+                ))}
+              </div>
+            ) : sessionsError ? (
+              <div className="bg-[#FDF4F4] border border-[#F2D1D1] rounded-lg p-3 text-xs text-[#8C2828] flex items-center justify-between">
+                <span>{sessionsError}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLoadingSessions(true);
+                    setRefreshKey((k) => k + 1);
+                  }}
+                  className="font-medium underline hover:text-[#5F2424] cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : upcomingSessions.length === 0 ? (
+              <div className="bg-white border border-[#EDE5DA] rounded-lg p-6 text-center">
+                <p className="text-xs text-[#5D6D63] mb-2">
+                  No upcoming sessions scheduled on your calendar.
+                </p>
+                <Link
+                  to="/schedule?tab=appointments"
+                  className="text-xs font-medium text-[#1B3B2B] hover:underline underline-offset-4"
+                >
+                  Manage Availability & Schedule →
+                </Link>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {upcomingSessions.slice(0, 5).map((session) => (
+                  <div
+                    key={session._id}
+                    className="bg-white border border-[#EDE5DA] hover:border-[#D6CBC0] rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="bg-[#FAF7F2] border border-[#EAE2D6] rounded-lg px-2.5 py-1.5 text-center min-w-[90px] shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#1B3B2B] block">
+                          {formatUtcDate(session.startTime, practiceTimezone).split(",")[0]}
+                        </span>
+                        <span className="text-xs font-medium text-[#14261D] block">
+                          {formatUtcDate(session.startTime, practiceTimezone).split(",")[1]}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-[#14261D]">
+                          {session.clientName}
+                        </span>
+                        <span className="text-xs text-[#5D6D63]">
+                          {formatUtcTimeRange12h(session.startTime, session.endTime, practiceTimezone)}{" "}
+                          ({practiceTimezone}) · {session.duration} mins
+                        </span>
+                      </div>
+                    </div>
+
+                    <Link
+                      to="/schedule?tab=appointments"
+                      className="text-xs font-medium text-[#1B3B2B] hover:underline underline-offset-4 self-end sm:self-auto shrink-0"
+                    >
+                      Details →
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Account Profile Card */}

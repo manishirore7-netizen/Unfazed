@@ -19,8 +19,31 @@ if (process.env.CLIENT_URL) {
     });
 }
 
+// Helper to identify localhost / 127.0.0.1 origins on any port during local development
+const isLocalOrigin = (origin) => {
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+};
+
 const corsOptions = {
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, or server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Allow explicitly configured production / client origins
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // During local development, allow localhost on any port (e.g. Vite on 5173, 5174, 5175)
+    if (process.env.NODE_ENV !== "production" && isLocalOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    // Disallow all other origins
+    return callback(null, false);
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
