@@ -15,6 +15,8 @@ const {
 const {
   getPublicAvailableSlots,
   createPublicBooking,
+  getTherapistAvailableSlots,
+  createTherapistBooking,
 } = require("../controllers/bookingController");
 
 const router = express.Router();
@@ -42,8 +44,10 @@ router.get("/blocks", authMiddleware, getBlockedSlots);
 router.post("/blocks", authMiddleware, createBlockedSlot);
 router.delete("/blocks/:id", authMiddleware, deleteBlockedSlot);
 
-// Bookings & Cancellations
+// Bookings, Scheduling & Cancellations
+router.get("/slots", authMiddleware, getTherapistAvailableSlots);
 router.get("/bookings", authMiddleware, getTherapistBookings);
+router.post("/bookings", authMiddleware, createTherapistBooking);
 router.patch("/bookings/:id/cancel", authMiddleware, cancelBooking);
 
 module.exports = router;

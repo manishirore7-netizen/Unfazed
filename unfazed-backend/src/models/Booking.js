@@ -9,6 +9,11 @@ const bookingSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      index: true,
+    },
     clientName: {
       type: String,
       required: [true, "Client name is required"],

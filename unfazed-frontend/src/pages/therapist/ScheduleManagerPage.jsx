@@ -405,6 +405,12 @@ export default function ScheduleManagerPage() {
               ← Dashboard
             </Link>
             <Link
+              to="/clients"
+              className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              Clients
+            </Link>
+            <Link
               to="/profile"
               className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-2.5 py-1.5 rounded-lg transition-colors"
             >

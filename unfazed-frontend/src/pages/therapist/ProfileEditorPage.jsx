@@ -172,6 +172,12 @@ export default function ProfileEditorPage() {
 
           <div className="flex items-center gap-3">
             <Link
+              to="/clients"
+              className="text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Clients
+            </Link>
+            <Link
               to="/schedule"
               className="text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
             >

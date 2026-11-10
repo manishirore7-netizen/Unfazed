@@ -38,10 +38,12 @@ const calculateAvailableSlots = ({
   blockedSlots = [],
   bookings = [],
   queryDate,
+  date,
   duration,
   clientTimezone,
   now = new Date(),
 }) => {
+  const effectiveDate = queryDate || date;
   if (!availability) {
     throw new Error("Therapist availability configuration is required.");
   }
@@ -61,7 +63,7 @@ const calculateAvailableSlots = ({
   );
 
   // Define client target day window in UTC
-  const clientDayStart = getUtcFromLocal(queryDate, "00:00", clientTz);
+  const clientDayStart = getUtcFromLocal(effectiveDate, "00:00", clientTz);
   const clientDayEnd = new Date(clientDayStart.getTime() + 24 * 60 * 60 * 1000);
 
   // Map client day window to therapist local calendar dates (can cross midnight)
