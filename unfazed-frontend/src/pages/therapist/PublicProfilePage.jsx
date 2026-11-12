@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import axiosInstance from "../../api/axiosInstance";
 import BookingModal from "../../components/scheduling/BookingModal";
+import PackageCheckoutModal from "../../components/payments/PackageCheckoutModal";
+import { formatPaiseToInr } from "../../utils/razorpay";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -13,8 +15,11 @@ export default function PublicProfilePage() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState(null);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [packages, setPackages] = useState([]);
+  const [selectedPackageForCheckout, setSelectedPackageForCheckout] = useState(null);
+  const [isPackageCheckoutOpen, setIsPackageCheckoutOpen] = useState(false);
 
-  // 1. Fetch public therapist profile by slug
+  // 1. Fetch public therapist profile and active packages by slug
   useEffect(() => {
     let isMounted = true;
 
@@ -24,21 +29,33 @@ export default function PublicProfilePage() {
         setNotFound(false);
         setError(null);
 
-        const response = await axiosInstance.get(`/therapist/${slug}`);
-        if (isMounted && response.data?.data) {
-          setTherapist(response.data.data);
-        }
-      } catch (err) {
-        if (isMounted) {
-          if (err.response?.status === 404) {
+        const [profileRes, packagesRes] = await Promise.allSettled([
+          axiosInstance.get(`/therapist/${slug}`),
+          axiosInstance.get(`/packages/public/${slug}`),
+        ]);
+
+        if (!isMounted) return;
+
+        if (profileRes.status === "fulfilled" && profileRes.value.data?.data) {
+          setTherapist(profileRes.value.data.data);
+        } else if (profileRes.status === "rejected") {
+          if (profileRes.reason?.response?.status === 404) {
             setNotFound(true);
           } else {
             setError(
-              err.response?.data?.message ||
-                err.message ||
+              profileRes.reason?.response?.data?.message ||
+                profileRes.reason?.message ||
                 "Unable to load profile. Please try again later."
             );
           }
+        }
+
+        if (packagesRes.status === "fulfilled" && Array.isArray(packagesRes.value.data?.data)) {
+          setPackages(packagesRes.value.data.data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || "Unable to load profile.");
         }
       } finally {
         if (isMounted) {
@@ -472,7 +489,99 @@ export default function PublicProfilePage() {
           </section>
         )}
 
-        {/* F. SCHEDULING CALL TO ACTION BANNER */}
+        {/* F. SESSION PACKAGES SECTION */}
+        {packages.length > 0 && (
+          <section className="flex flex-col gap-6 border-t border-[#E8DFD3] pt-10">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+              <div>
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1B3B2B] mb-1">
+                  Bundles & Pricing
+                </h2>
+                <h3 className="text-2xl font-serif font-medium text-[#152B20]">
+                  Session Packages
+                </h3>
+              </div>
+              <span className="text-xs text-[#7F8D84]">
+                Prepaid multi-session bundles with automated credit redemption
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {packages.map((pkg) => (
+                <div
+                  key={pkg._id}
+                  className="bg-white border border-[#E9DFD2] rounded-2xl p-6 flex flex-col justify-between shadow-xs hover:border-[#C4DCB5] transition-all"
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-[#EBF3ED] text-[#1E4D32] border border-[#CDE3D5]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#2A6543]"></span>
+                        {pkg.sessionCount} Sessions
+                      </span>
+
+                      {pkg.discountPercentage > 0 && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#FAF0E6] text-[#78471A] border border-[#EBD4C1]">
+                          {pkg.discountPercentage}% SAVINGS
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="font-serif font-medium text-lg text-[#14261D] leading-snug">
+                        {pkg.title}
+                      </h4>
+                      {pkg.description && (
+                        <p className="text-xs text-[#596960] mt-1 line-clamp-2 leading-relaxed">
+                          {pkg.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#F2ECE3] text-xs">
+                      <div className="bg-[#FAF8F5] p-2.5 rounded-xl border border-[#EAE2D6]">
+                        <span className="text-[10px] text-[#78887F] block">Duration</span>
+                        <strong className="text-xs font-semibold text-[#14261D]">
+                          {pkg.durationMinutes} mins / session
+                        </strong>
+                      </div>
+
+                      <div className="bg-[#FAF8F5] p-2.5 rounded-xl border border-[#EAE2D6]">
+                        <span className="text-[10px] text-[#78887F] block">Validity</span>
+                        <strong className="text-xs font-semibold text-[#14261D]">
+                          {pkg.validityDays} Days
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-5 mt-5 border-t border-[#F2ECE3] flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-[#78887F] block uppercase tracking-wider">
+                        Total Price
+                      </span>
+                      <span className="font-serif text-xl font-semibold text-[#1B3B2B]">
+                        {formatPaiseToInr(pkg.price)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPackageForCheckout(pkg);
+                        setIsPackageCheckoutOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#1B3B2B] text-white hover:bg-[#234E39] font-medium text-xs transition-colors cursor-pointer shadow-xs"
+                    >
+                      Buy Package →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* G. SCHEDULING CALL TO ACTION BANNER */}
         <section className="bg-gradient-to-r from-[#1B3B2B] to-[#24523B] rounded-3xl p-8 sm:p-12 text-[#FAF7F2] flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
           <div className="flex flex-col gap-2 text-center sm:text-left">
             <h3 className="text-2xl sm:text-3xl font-serif font-medium text-white">
@@ -526,6 +635,25 @@ export default function PublicProfilePage() {
         isOpen={isBookingOpen}
         onClose={() => setIsBookingOpen(false)}
       />
+
+      {/* Public Package Checkout Modal */}
+      {selectedPackageForCheckout && (
+        <PackageCheckoutModal
+          isOpen={isPackageCheckoutOpen}
+          onClose={() => {
+            setIsPackageCheckoutOpen(false);
+            setSelectedPackageForCheckout(null);
+          }}
+          packageData={{
+            ...selectedPackageForCheckout,
+            therapistSlug: slug,
+          }}
+          therapist={therapist}
+          onSuccess={() => {
+            // Refetch packages / notify
+          }}
+        />
+      )}
     </div>
   );
 }

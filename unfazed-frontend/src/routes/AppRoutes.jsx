@@ -8,7 +8,10 @@ import ProfileEditorPage from "../pages/therapist/ProfileEditorPage";
 import ScheduleManagerPage from "../pages/therapist/ScheduleManagerPage";
 import ClientsPage from "../pages/therapist/ClientsPage";
 import ClientDetailPage from "../pages/therapist/ClientDetailPage";
+import PackagesPage from "../pages/therapist/PackagesPage";
+import PaymentsPage from "../pages/therapist/PaymentsPage";
 import PublicProfilePage from "../pages/therapist/PublicProfilePage";
+import ClientIntakePage from "../pages/client/ClientIntakePage";
 
 // Helper component that redirects authenticated therapists away from public auth pages
 function PublicRoute({ children }) {
@@ -76,6 +79,26 @@ export default function AppRoutes() {
         }
       />
 
+      {/* Protected Therapist Packages */}
+      <Route
+        path="/packages"
+        element={
+          <ProtectedRoute>
+            <PackagesPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected Therapist Payments & Billing Ledger */}
+      <Route
+        path="/payments"
+        element={
+          <ProtectedRoute>
+            <PaymentsPage />
+          </ProtectedRoute>
+        }
+      />
+
       {/* Public Authentication Pages */}
       <Route
         path="/login"
@@ -93,6 +116,9 @@ export default function AppRoutes() {
           </PublicRoute>
         }
       />
+
+      {/* Public Client Intake & Digital Consent Portal */}
+      <Route path="/intake/:token" element={<ClientIntakePage />} />
 
       {/* Public Branded Therapist Profile */}
       <Route path="/:slug" element={<PublicProfilePage />} />

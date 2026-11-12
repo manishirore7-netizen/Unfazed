@@ -72,6 +72,25 @@ const bookingSchema = new mongoose.Schema(
       default: "confirmed",
       index: true,
     },
+    // Optional payment integration fields (Module 4)
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "paid", "package_credit", "waived"],
+      default: "unpaid",
+      index: true,
+    },
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+      index: true,
+    },
+    clientPackageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ClientPackage",
+      default: null,
+      index: true,
+    },
     // Discrete 15-minute time tokens representing the occupied duration and buffer
     bookedBuckets: {
       type: [String],

@@ -8,9 +8,17 @@ const {
   updateClient,
   deleteClient,
 } = require("../controllers/clientController");
+const {
+  initiateIntake,
+  getClientIntakeDetails,
+} = require("../controllers/intakeController");
 
 // All client CRM routes require therapist authentication
 router.use(authMiddleware);
+
+// Client Intake & Consent endpoints (Therapist authenticated)
+router.post("/:id/intake/initiate", initiateIntake);
+router.get("/:id/intake", getClientIntakeDetails);
 
 // Client CRUD endpoints
 router.post("/", createClient);

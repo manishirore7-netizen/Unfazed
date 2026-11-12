@@ -12,6 +12,7 @@ import {
   addDaysToDate,
   createGoogleCalendarUrl,
 } from "../../utils/dateHelpers";
+import { openRazorpayCheckout } from "../../utils/razorpay";
 
 const COMMON_CLIENT_TIMEZONES = [
   { value: "Asia/Kolkata", label: "India Standard Time (IST, UTC+5:30)" },
@@ -65,10 +66,64 @@ export default function BookingModal({ therapist, isOpen, onClose }) {
   const [clientNotes, setClientNotes] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
+  // Session Package Credit & Payment Selection
+  const [packageBalance, setPackageBalance] = useState({
+    hasActivePackage: false,
+    remainingCredits: 0,
+    packages: [],
+  });
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("unpaid"); // "package_credit" | "online" | "unpaid"
+
   // Submission State
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [confirmedBooking, setConfirmedBooking] = useState(null);
+
+  // Check client package balance when email is valid
+  useEffect(() => {
+    let isMounted = true;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const normalized = clientEmail.trim().toLowerCase();
+
+    if (!therapist?.slug || !emailRegex.test(normalized)) {
+      setPackageBalance({ hasActivePackage: false, remainingCredits: 0, packages: [] });
+      setPaymentMethod((prev) => (prev === "package_credit" ? "unpaid" : prev));
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setIsCheckingBalance(true);
+      axiosInstance
+        .get(`/packages/public/${therapist.slug}/balance`, {
+          params: { email: normalized },
+        })
+        .then((res) => {
+          if (!isMounted) return;
+          if (res.data?.success && res.data?.data) {
+            setPackageBalance(res.data.data);
+            if (res.data.data.hasActivePackage && res.data.data.remainingCredits > 0) {
+              setPaymentMethod("package_credit");
+            } else {
+              setPaymentMethod((prev) => (prev === "package_credit" ? "unpaid" : prev));
+            }
+          }
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          setPackageBalance({ hasActivePackage: false, remainingCredits: 0, packages: [] });
+          setPaymentMethod((prev) => (prev === "package_credit" ? "unpaid" : prev));
+        })
+        .finally(() => {
+          if (isMounted) setIsCheckingBalance(false);
+        });
+    }, 400);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [clientEmail, therapist?.slug]);
 
   // User Action Handlers that trigger slot reload
   const handleDurationChange = (dur) => {
@@ -242,6 +297,7 @@ export default function BookingModal({ therapist, isOpen, onClose }) {
         clientNotes: clientNotes.trim(),
         startTime: selectedSlot.startTime,
         duration: selectedDuration,
+        usePackageCredit: paymentMethod === "package_credit",
       };
 
       const res = await axiosInstance.post(
@@ -249,14 +305,97 @@ export default function BookingModal({ therapist, isOpen, onClose }) {
         payload
       );
 
-      if (res.data?.success && res.data?.data) {
-        setConfirmedBooking(res.data.data);
-        setStep("confirmed");
-      } else {
-        setSubmitError(
+      if (!res.data?.success || !res.data?.data) {
+        throw new Error(
           res.data?.message || "Unexpected response format received while confirming booking."
         );
       }
+
+      const bookingRecord = res.data.data;
+
+      // If client chose to pay online with Razorpay test mode
+      if (paymentMethod === "online") {
+        try {
+          const orderRes = await axiosInstance.post(
+            `/payments/public/${therapist.slug}/session-order`,
+            {
+              bookingId: bookingRecord.id,
+              amountInRupees: 1500,
+            }
+          );
+
+          const orderData = orderRes.data?.data;
+          if (!orderData || !orderData.orderId || !orderData.key) {
+            throw new Error(
+              orderRes.data?.message ||
+                "Unable to start online payment: order ID or payment key was missing."
+            );
+          }
+
+          await openRazorpayCheckout({
+            key: orderData.key,
+            amount: orderData.amount,
+            currency: orderData.currency || "INR",
+            orderId: orderData.orderId,
+            name: therapist.name || "Unfazed Practice",
+            description: `${selectedDuration}-Minute Therapy Session`,
+            prefill: {
+              name: clientName,
+              email: clientEmail,
+              phone: clientPhone,
+            },
+            onSuccess: async (razorpayResponse) => {
+              try {
+                const verifyRes = await axiosInstance.post("/payments/verify", {
+                  razorpay_order_id: razorpayResponse.razorpay_order_id,
+                  razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+                  razorpay_signature: razorpayResponse.razorpay_signature,
+                });
+
+                if (verifyRes.data?.success && verifyRes.data?.data?.status === "captured") {
+                  setConfirmedBooking({
+                    ...bookingRecord,
+                    paymentStatus: "paid",
+                  });
+                  setStep("confirmed");
+                } else {
+                  throw new Error(verifyRes.data?.message || "Payment verification failed.");
+                }
+              } catch (verifyErr) {
+                console.error("Session payment verification error:", verifyErr);
+                setSubmitError(
+                  verifyErr.response?.data?.message ||
+                    verifyErr.message ||
+                    "Payment was processed by Razorpay but verification failed. Please contact your therapist."
+                );
+                setIsSubmitting(false);
+              }
+            },
+            onDismiss: () => {
+              // Booking was successfully confirmed as unpaid
+              setConfirmedBooking(bookingRecord);
+              setStep("confirmed");
+            },
+            onFailure: () => {
+              setConfirmedBooking(bookingRecord);
+              setStep("confirmed");
+            },
+          });
+          return;
+        } catch (payErr) {
+          console.error("Session payment order error:", payErr);
+          setSubmitError(
+            payErr.response?.data?.message ||
+              payErr.message ||
+              "Failed to initialize online payment order. Please try again or select Pay Post-Session."
+          );
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      setConfirmedBooking(bookingRecord);
+      setStep("confirmed");
     } catch (err) {
       const status = err.response?.status;
       const message =
@@ -602,10 +741,127 @@ export default function BookingModal({ therapist, isOpen, onClose }) {
               />
             </div>
 
-            {/* Notice regarding instant confirmation */}
+            {/* Package Credits & Payment Method Selector */}
+            <div className="flex flex-col gap-2 pt-1 border-t border-[#EFE8DF]">
+              <label className="text-xs font-semibold tracking-wide uppercase text-[#3E4A43]">
+                Payment & Session Credit
+              </label>
+
+              {isCheckingBalance ? (
+                <div className="p-3 bg-[#FAF8F5] border border-[#EAE2D6] rounded-xl text-xs text-[#717E76] flex items-center gap-2">
+                  <svg className="animate-spin h-3.5 w-3.5 text-[#1B3B2B]" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                  </svg>
+                  <span>Checking session package credits for this email...</span>
+                </div>
+              ) : packageBalance.hasActivePackage && packageBalance.remainingCredits > 0 ? (
+                <div className="p-3.5 bg-[#EBF3ED] border border-[#CDE3D5] rounded-xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-xs text-[#1E4D32] flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#2A6543]"></span>
+                      Active Session Package Found
+                    </span>
+                    <span className="text-[11px] font-bold text-[#1E4D32] bg-white border border-[#CDE3D5] px-2 py-0.5 rounded-md">
+                      {packageBalance.remainingCredits} credits available
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#2E6B45]">
+                    You have active session credits with {therapist.name}. You can redeem 1 credit for this appointment without additional charges.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <label
+                      className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                        paymentMethod === "package_credit"
+                          ? "bg-white border-[#1B3B2B] text-[#1B3B2B] font-medium shadow-xs"
+                          : "bg-[#FAF8F5] border-[#D9D1C5] text-[#55635B]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="package_credit"
+                        checked={paymentMethod === "package_credit"}
+                        onChange={() => setPaymentMethod("package_credit")}
+                        className="text-[#1B3B2B] focus:ring-[#1B3B2B]"
+                      />
+                      <span>Redeem 1 Package Credit</span>
+                    </label>
+
+                    <label
+                      className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                        paymentMethod === "online"
+                          ? "bg-white border-[#1B3B2B] text-[#1B3B2B] font-medium shadow-xs"
+                          : "bg-[#FAF8F5] border-[#D9D1C5] text-[#55635B]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="online"
+                        checked={paymentMethod === "online"}
+                        onChange={() => setPaymentMethod("online")}
+                        className="text-[#1B3B2B] focus:ring-[#1B3B2B]"
+                      />
+                      <span>Pay Online (Razorpay)</span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label
+                    className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
+                      paymentMethod === "online"
+                        ? "bg-[#EBF3ED] border-[#1B3B2B] text-[#1B3B2B] font-medium shadow-xs"
+                        : "bg-[#FCFAF7] border-[#DCD4C7] text-[#55635B]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="online"
+                      checked={paymentMethod === "online"}
+                      onChange={() => setPaymentMethod("online")}
+                      className="text-[#1B3B2B] focus:ring-[#1B3B2B]"
+                    />
+                    <div>
+                      <span className="block font-medium">Pay Online (Test Mode)</span>
+                      <span className="text-[10px] text-[#717E76]">₹1,500 via UPI / Card</span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
+                      paymentMethod === "unpaid"
+                        ? "bg-[#EBF3ED] border-[#1B3B2B] text-[#1B3B2B] font-medium shadow-xs"
+                        : "bg-[#FCFAF7] border-[#DCD4C7] text-[#55635B]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="unpaid"
+                      checked={paymentMethod === "unpaid"}
+                      onChange={() => setPaymentMethod("unpaid")}
+                      className="text-[#1B3B2B] focus:ring-[#1B3B2B]"
+                    />
+                    <div>
+                      <span className="block font-medium">Pay Post-Session</span>
+                      <span className="text-[10px] text-[#717E76]">No upfront charge now</span>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* Notice regarding confirmation */}
             <p className="text-[11px] text-[#717E76] leading-relaxed">
-              By confirming, this session will be booked directly on {therapist.name}&apos;s schedule.
-              No upfront payment is required at this step.
+              {paymentMethod === "package_credit"
+                ? "1 session credit will be deducted from your package upon confirmation."
+                : paymentMethod === "online"
+                ? "You will be redirected to the secure Razorpay test-mode gateway to complete payment."
+                : `By confirming, this session will be booked directly on ${therapist.name}'s schedule. No upfront payment is required.`}
             </p>
 
             {/* Bottom Navigation */}
@@ -684,10 +940,32 @@ export default function BookingModal({ therapist, isOpen, onClose }) {
                 </span>
               </div>
 
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center border-b border-[#EFE8DF] pb-2">
                 <span className="text-[#6E7B74]">Client:</span>
                 <span className="font-medium text-[#14261D]">
                   {confirmedBooking.clientName} ({confirmedBooking.clientEmail})
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-[#6E7B74]">Payment Status:</span>
+                <span className="font-medium">
+                  {confirmedBooking.paymentStatus === "package_credit" ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1E4D32] bg-[#EBF3ED] px-2.5 py-0.5 rounded-full border border-[#CDE3D5]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#2A6543]"></span>
+                      Package Credit Redeemed
+                    </span>
+                  ) : confirmedBooking.paymentStatus === "paid" ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1E4D32] bg-[#EBF3ED] px-2.5 py-0.5 rounded-full border border-[#CDE3D5]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#2A6543]"></span>
+                      Paid Online (Captured)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#8C6D1F] bg-[#FFF8E6] px-2.5 py-0.5 rounded-full border border-[#F2E3B3]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#C49B28]"></span>
+                      Pay Post-Session
+                    </span>
+                  )}
                 </span>
               </div>
             </div>

@@ -32,6 +32,9 @@ const createClient = async (req, res) => {
       address,
       presentingConcern,
       relevantHistory,
+      medicalHistory,
+      mentalHealthHistory,
+      currentMedications,
       goals,
     } = req.body;
 
@@ -97,6 +100,9 @@ const createClient = async (req, res) => {
         : undefined,
       presentingConcern: typeof presentingConcern === "string" ? presentingConcern.trim() : "",
       relevantHistory: typeof relevantHistory === "string" ? relevantHistory.trim() : "",
+      medicalHistory: typeof medicalHistory === "string" ? medicalHistory.trim() : "",
+      mentalHealthHistory: typeof mentalHealthHistory === "string" ? mentalHealthHistory.trim() : "",
+      currentMedications: typeof currentMedications === "string" ? currentMedications.trim() : "",
       goals: typeof goals === "string" ? goals.trim() : "",
     };
 
@@ -289,6 +295,9 @@ const updateClient = async (req, res) => {
       "address",
       "presentingConcern",
       "relevantHistory",
+      "medicalHistory",
+      "mentalHealthHistory",
+      "currentMedications",
       "goals",
     ];
 

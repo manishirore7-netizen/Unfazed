@@ -4,6 +4,7 @@ const AvailabilityOverride = require("../models/AvailabilityOverride");
 const BlockedSlot = require("../models/BlockedSlot");
 const Booking = require("../models/Booking");
 const Client = require("../models/Client");
+const ClientPackage = require("../models/ClientPackage");
 const { calculateAvailableSlots } = require("../utils/slotCalculator");
 const {
   isValidTimezone,
@@ -182,8 +183,15 @@ const getPublicAvailableSlots = async (req, res) => {
 const createPublicBooking = async (req, res) => {
   try {
     const { slug } = req.params;
-    const { clientName, clientEmail, clientPhone, clientNotes, startTime, duration } =
-      req.body;
+    const {
+      clientName,
+      clientEmail,
+      clientPhone,
+      clientNotes,
+      startTime,
+      duration,
+      usePackageCredit,
+    } = req.body;
 
     // 1. Basic field presence checks
     if (!clientName || typeof clientName !== "string" || !clientName.trim()) {
@@ -335,6 +343,73 @@ const createPublicBooking = async (req, res) => {
       });
     }
 
+    // 10.5 Session Credit Redemption: check and deduct package credit if requested
+    let redeemedPkg = null;
+    let paymentStatus = "unpaid";
+    let clientPackageId = null;
+
+    if (usePackageCredit === true || usePackageCredit === "true") {
+      const existingClient = await Client.findOne({
+        therapist_id: therapist._id,
+        email: normalizedEmail,
+      });
+
+      if (!existingClient) {
+        return res.status(400).json({
+          success: false,
+          message: "No registered client profile or package found for this email.",
+        });
+      }
+
+      // Find earliest expiring active package with remaining sessions
+      const candidatePkg = await ClientPackage.findOne({
+        therapistId: therapist._id,
+        clientId: existingClient._id,
+        status: "active",
+        remainingSessions: { $gt: 0 },
+        expiresAt: { $gt: new Date() },
+      }).sort({ expiresAt: 1 });
+
+      if (!candidatePkg) {
+        return res.status(400).json({
+          success: false,
+          message: "No active package credit available or package has expired.",
+        });
+      }
+
+      // Atomically decrement 1 credit to prevent race conditions on final credit
+      const updatedPkg = await ClientPackage.findOneAndUpdate(
+        {
+          _id: candidatePkg._id,
+          status: "active",
+          remainingSessions: { $gt: 0 },
+          expiresAt: { $gt: new Date() },
+        },
+        {
+          $inc: { remainingSessions: -1, usedSessions: 1 },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!updatedPkg) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Insufficient session credits. The final credit may have just been redeemed by another session.",
+        });
+      }
+
+      if (updatedPkg.remainingSessions === 0) {
+        await ClientPackage.findByIdAndUpdate(updatedPkg._id, {
+          $set: { status: "exhausted" },
+        });
+      }
+
+      redeemedPkg = updatedPkg;
+      paymentStatus = "package_credit";
+      clientPackageId = updatedPkg._id;
+    }
+
     // 11. ATOMIC INSERTION: Final Concurrency Protection
     let newBooking;
     try {
@@ -349,8 +424,18 @@ const createPublicBooking = async (req, res) => {
         endTime: parsedEnd,
         status: "confirmed",
         bookedBuckets,
+        paymentStatus,
+        clientPackageId,
       });
     } catch (insertError) {
+      // Rollback redeemed credit if booking creation fails
+      if (redeemedPkg) {
+        await ClientPackage.findByIdAndUpdate(redeemedPkg._id, {
+          $inc: { remainingSessions: 1, usedSessions: -1 },
+          $set: { status: "active" },
+        });
+      }
+
       // Catch MongoDB duplicate key error code 11000 on { therapistId, bookedBuckets }
       if (
         insertError.code === 11000 ||
@@ -379,6 +464,12 @@ const createPublicBooking = async (req, res) => {
       }
     } catch (crmErr) {
       console.error("CRM sync error in createPublicBooking:", crmErr);
+      if (redeemedPkg) {
+        await ClientPackage.findByIdAndUpdate(redeemedPkg._id, {
+          $inc: { remainingSessions: 1, usedSessions: -1 },
+          $set: { status: "active" },
+        });
+      }
       // Clean up booking if CRM sync fails to ensure complete consistency
       await Booking.deleteOne({ _id: newBooking._id });
       throw crmErr;
@@ -398,6 +489,8 @@ const createPublicBooking = async (req, res) => {
         startTime: newBooking.startTime,
         endTime: newBooking.endTime,
         status: newBooking.status,
+        paymentStatus: newBooking.paymentStatus,
+        clientPackageId: newBooking.clientPackageId,
         therapist: {
           name: therapist.name,
           slug: therapist.slug,
@@ -529,6 +622,7 @@ const createTherapistBooking = async (req, res) => {
       clientNotes,
       startTime,
       duration,
+      usePackageCredit,
     } = req.body;
 
     // 1. Basic field checks
@@ -665,6 +759,67 @@ const createTherapistBooking = async (req, res) => {
       });
     }
 
+    // 8.5 Session Credit Redemption: check and deduct package credit if requested
+    let redeemedPkg = null;
+    let paymentStatus = "unpaid";
+    let clientPackageId = null;
+
+    if (usePackageCredit === true || usePackageCredit === "true") {
+      const targetClientId = clientRecord?._id;
+      if (!targetClientId) {
+        return res.status(400).json({
+          success: false,
+          message: "A registered client is required to redeem a package credit.",
+        });
+      }
+
+      const candidatePkg = await ClientPackage.findOne({
+        therapistId,
+        clientId: targetClientId,
+        status: "active",
+        remainingSessions: { $gt: 0 },
+        expiresAt: { $gt: new Date() },
+      }).sort({ expiresAt: 1 });
+
+      if (!candidatePkg) {
+        return res.status(400).json({
+          success: false,
+          message: "No active session package credit available for this client.",
+        });
+      }
+
+      const updatedPkg = await ClientPackage.findOneAndUpdate(
+        {
+          _id: candidatePkg._id,
+          status: "active",
+          remainingSessions: { $gt: 0 },
+          expiresAt: { $gt: new Date() },
+        },
+        {
+          $inc: { remainingSessions: -1, usedSessions: 1 },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!updatedPkg) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Insufficient session credits. The final credit may have just been redeemed by another session.",
+        });
+      }
+
+      if (updatedPkg.remainingSessions === 0) {
+        await ClientPackage.findByIdAndUpdate(updatedPkg._id, {
+          $set: { status: "exhausted" },
+        });
+      }
+
+      redeemedPkg = updatedPkg;
+      paymentStatus = "package_credit";
+      clientPackageId = updatedPkg._id;
+    }
+
     // 9. Atomic insertion with unique index concurrency protection
     let newBooking;
     try {
@@ -680,8 +835,17 @@ const createTherapistBooking = async (req, res) => {
         endTime: parsedEnd,
         status: "confirmed",
         bookedBuckets,
+        paymentStatus,
+        clientPackageId,
       });
     } catch (insertError) {
+      if (redeemedPkg) {
+        await ClientPackage.findByIdAndUpdate(redeemedPkg._id, {
+          $inc: { remainingSessions: 1, usedSessions: -1 },
+          $set: { status: "active" },
+        });
+      }
+
       if (
         insertError.code === 11000 ||
         (insertError.message && insertError.message.includes("E11000"))
@@ -709,6 +873,12 @@ const createTherapistBooking = async (req, res) => {
         }
       } catch (crmErr) {
         console.error("CRM sync error in createTherapistBooking:", crmErr);
+        if (redeemedPkg) {
+          await ClientPackage.findByIdAndUpdate(redeemedPkg._id, {
+            $inc: { remainingSessions: 1, usedSessions: -1 },
+            $set: { status: "active" },
+          });
+        }
         await Booking.deleteOne({ _id: newBooking._id });
         throw crmErr;
       }
@@ -728,6 +898,8 @@ const createTherapistBooking = async (req, res) => {
         startTime: newBooking.startTime,
         endTime: newBooking.endTime,
         status: newBooking.status,
+        paymentStatus: newBooking.paymentStatus,
+        clientPackageId: newBooking.clientPackageId,
         therapist: {
           name: therapist.name,
           slug: therapist.slug,

@@ -123,8 +123,8 @@ export default function ClientsPage() {
         } else {
           setErrorMessage(
             clientsRes.reason.response?.data?.message ||
-              clientsRes.reason.message ||
-              "Failed to load clients."
+            clientsRes.reason.message ||
+            "Failed to load clients."
           );
         }
 
@@ -278,6 +278,18 @@ export default function ClientsPage() {
               className="text-xs font-semibold text-[#1B3B2B] bg-[#EBF3ED] border border-[#CDE3D5] px-3.5 py-1.5 rounded-lg transition-colors"
             >
               Clients
+            </Link>
+            <Link
+              to="/packages"
+              className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Packages
+            </Link>
+            <Link
+              to="/payments"
+              className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Billing
             </Link>
             <Link
               to="/profile"
@@ -580,11 +592,11 @@ export default function ClientsPage() {
                     // Generate avatar initials
                     const initials = client.name
                       ? client.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .slice(0, 2)
-                          .join("")
-                          .toUpperCase()
+                        .split(" ")
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase()
                       : "CL";
 
                     return (
@@ -626,14 +638,30 @@ export default function ClientsPage() {
 
                         {/* Status */}
                         <td className="py-4 px-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
-                          >
+                          <div className="flex flex-col gap-1 items-start">
                             <span
-                              className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`}
-                            ></span>
-                            {statusConfig.label}
-                          </span>
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold border ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`}
+                              ></span>
+                              {statusConfig.label}
+                            </span>
+
+                            {client.intakeStatus === "completed" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-[#2A6543] font-medium">
+                                <svg className="w-3 h-3 text-[#2A6543]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Intake Done</span>
+                              </span>
+                            ) : client.intakeStatus === "pending" ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-[#8C6D1F] font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#C49B28]"></span>
+                                <span>Intake Pending</span>
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
 
                         {/* Tags */}
