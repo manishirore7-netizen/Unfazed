@@ -2,7 +2,22 @@ import { useState, useEffect } from "react";
 import axiosInstance from "../../api/axiosInstance";
 import Button from "../common/Button";
 import Alert from "../common/Alert";
+import UpgradeModal from "../subscription/UpgradeModal";
 import { formatUtcDate, formatUtcTimeRange12h } from "../../utils/dateHelpers";
+
+const TEMPLATE_OPTIONS = [
+  { id: "freeform", label: "Freeform / General", tier: "Starter", badge: "All Plans" },
+  { id: "soap", label: "SOAP Note", tier: "Pro", badge: "Pro / Premium" },
+  { id: "dap", label: "DAP Note", tier: "Pro", badge: "Pro / Premium" },
+  { id: "birp", label: "BIRP Note", tier: "Premium", badge: "Premium Only" },
+];
+
+const TEMPLATE_SCAFFOLDS = {
+  freeform: "",
+  soap: "S (Subjective):\nPatient reports:\n\nO (Objective):\nMental status and observations:\n\nA (Assessment):\nClinical impressions:\n\nP (Plan):\nInterventions and next session goals:\n",
+  dap: "D (Description / Data):\nPatient presentation and discussion:\n\nA (Assessment):\nClinical evaluation and progress:\n\nP (Plan):\nHomework, exercises, and next appointment:\n",
+  birp: "B (Behavior):\nSpecific observed behaviors and symptoms:\n\nI (Intervention):\nTherapeutic interventions utilized:\n\nR (Response):\nClient's response to interventions:\n\nP (Plan):\nCare plan and follow-up:\n",
+};
 
 export default function NoteFormModal({
   isOpen,
@@ -16,6 +31,7 @@ export default function NoteFormModal({
   const isEditing = Boolean(noteToEdit);
 
   const [type, setType] = useState(noteToEdit?.type || "private");
+  const [template, setTemplate] = useState(noteToEdit?.template || "freeform");
   const [bookingId, setBookingId] = useState(
     noteToEdit?.bookingId?._id || noteToEdit?.bookingId || ""
   );
@@ -23,24 +39,37 @@ export default function NoteFormModal({
   const [content, setContent] = useState(noteToEdit?.content || "");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState("");
 
   // Sync state when modal opens or noteToEdit changes
   useEffect(() => {
     if (isOpen) {
       if (noteToEdit) {
         setType(noteToEdit.type || "private");
+        setTemplate(noteToEdit.template || "freeform");
         setBookingId(noteToEdit.bookingId?._id || noteToEdit.bookingId || "");
         setTitle(noteToEdit.title || "");
         setContent(noteToEdit.content || "");
       } else {
         setType("private");
+        setTemplate("freeform");
         setBookingId(clientBookings.length > 0 ? clientBookings[0]._id : "");
         setTitle("");
         setContent("");
       }
       setErrorMessage("");
+      setUpgradeReason("");
     }
   }, [isOpen, noteToEdit, clientBookings]);
+
+  const handleTemplateSelect = (newTemplate) => {
+    setTemplate(newTemplate);
+    const currentIsScaffold = Object.values(TEMPLATE_SCAFFOLDS).some((s) => s && content === s);
+    if (!content.trim() || currentIsScaffold) {
+      setContent(TEMPLATE_SCAFFOLDS[newTemplate] || "");
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -60,6 +89,7 @@ export default function NoteFormModal({
         clientId,
         bookingId: bookingId || null,
         type,
+        template: template || "freeform",
         title: title.trim(),
         content: content.trim(),
       };
@@ -78,11 +108,17 @@ export default function NoteFormModal({
         setErrorMessage(response.data?.message || "Failed to save clinical note.");
       }
     } catch (err) {
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "An unexpected error occurred while saving the note.";
-      setErrorMessage(msg);
+      if (err.response?.status === 403 && err.response?.data?.code === "FEATURE_RESTRICTED") {
+        const msg = err.response.data.message || "Template restricted by your current plan.";
+        setErrorMessage(msg);
+        setUpgradeReason(msg);
+      } else {
+        const msg =
+          err.response?.data?.message ||
+          err.message ||
+          "An unexpected error occurred while saving the note.";
+        setErrorMessage(msg);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -115,8 +151,23 @@ export default function NoteFormModal({
           </button>
         </div>
 
-        {errorMessage && (
+        {errorMessage && !upgradeReason && (
           <Alert variant="error" message={errorMessage} onClose={() => setErrorMessage("")} />
+        )}
+
+        {upgradeReason && (
+          <div className="p-3.5 rounded-xl bg-[#FFF8E6] border border-[#F2E3B3] flex items-center justify-between gap-3 text-xs">
+            <span className="text-[#8C6D1F] font-medium leading-relaxed">
+              {upgradeReason}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsUpgradeModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-[#8C6D1F] hover:bg-[#735817] text-white text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+            >
+              Upgrade Plan
+            </button>
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -227,6 +278,38 @@ export default function NoteFormModal({
             />
           </div>
 
+          {/* Note Template Selection (Module 7 Entitlement Gate) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-[#27382F] block">
+                Clinical Documentation Framework
+              </label>
+              <span className="text-[10px] text-[#717E76]">
+                Structured templates require Pro/Premium
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {TEMPLATE_OPTIONS.map((t) => {
+                const isSelected = template === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleTemplateSelect(t.id)}
+                    className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                      isSelected
+                        ? "bg-[#FAF8F5] border-[#1B3B2B] ring-1 ring-[#1B3B2B]"
+                        : "bg-white border-[#E0D7CA] hover:border-[#C4B7A3]"
+                    }`}
+                  >
+                    <span className="font-semibold text-xs text-[#14261D]">{t.label}</span>
+                    <span className="text-[9px] text-[#717E76] mt-1">{t.badge}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Freeform Note Text Editor */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -283,6 +366,19 @@ export default function NoteFormModal({
           </div>
         </form>
       </div>
+
+      <UpgradeModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        onUpgraded={() => {
+          setIsUpgradeModalOpen(false);
+          setErrorMessage("");
+          setUpgradeReason("");
+        }}
+        title="Upgrade to Unlock Clinical Templates"
+        message={upgradeReason}
+        requiredTier={["birp", "girp"].includes(template) ? "premium" : "pro"}
+      />
     </div>
   );
 }

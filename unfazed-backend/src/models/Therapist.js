@@ -60,6 +60,28 @@ const therapistSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+
+    // Platform subscription & entitlement tier (Module 7)
+    subscription: {
+      tier: {
+        type: String,
+        enum: ["starter", "pro", "premium"],
+        default: "starter",
+      },
+      status: {
+        type: String,
+        enum: ["active", "trialing", "past_due", "canceled", "expired"],
+        default: "active",
+      },
+      currentPeriodStart: {
+        type: Date,
+        default: Date.now,
+      },
+      currentPeriodEnd: {
+        type: Date,
+        default: null,
+      },
+    },
   },
   {
     // Automatically manages createdAt and updatedAt fields

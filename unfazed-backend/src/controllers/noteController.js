@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Note = require("../models/Note");
 const Client = require("../models/Client");
 const Booking = require("../models/Booking");
+const { canAccess } = require("../services/entitlementService");
 
 /**
  * Hash raw token using SHA-256 for secure client lookup
@@ -38,6 +39,20 @@ const createNote = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Note type must be either 'private' or 'shared'.",
+      });
+    }
+
+    // Entitlement Check: Note Template Type (Module 7)
+    const requestedTemplate = (req.body.template || "freeform").toLowerCase().trim();
+    const templateCheck = await canAccess(req.therapistId, "note_templates", {
+      template: requestedTemplate,
+    });
+    if (!templateCheck.allowed) {
+      return res.status(403).json({
+        success: false,
+        code: "FEATURE_RESTRICTED",
+        message: templateCheck.reason,
+        entitlement: templateCheck,
       });
     }
 
@@ -84,6 +99,7 @@ const createNote = async (req, res) => {
       clientId: client._id,
       bookingId: validBookingId,
       type,
+      template: requestedTemplate,
       title: title.trim(),
       content: content.trim(),
       sharedAt: type === "shared" ? new Date() : null,
@@ -242,6 +258,22 @@ const updateNote = async (req, res) => {
 
     if (title !== undefined) {
       note.title = String(title).trim();
+    }
+
+    if (req.body.template !== undefined) {
+      const updatedTemplate = String(req.body.template).toLowerCase().trim();
+      const templateCheck = await canAccess(req.therapistId, "note_templates", {
+        template: updatedTemplate,
+      });
+      if (!templateCheck.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "FEATURE_RESTRICTED",
+          message: templateCheck.reason,
+          entitlement: templateCheck,
+        });
+      }
+      note.template = updatedTemplate;
     }
 
     if (content !== undefined) {

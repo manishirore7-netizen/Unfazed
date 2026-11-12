@@ -10,6 +10,7 @@ import ClientsPage from "../pages/therapist/ClientsPage";
 import ClientDetailPage from "../pages/therapist/ClientDetailPage";
 import PackagesPage from "../pages/therapist/PackagesPage";
 import PaymentsPage from "../pages/therapist/PaymentsPage";
+import AnalyticsPage from "../pages/therapist/AnalyticsPage";
 import PublicProfilePage from "../pages/therapist/PublicProfilePage";
 import ClientIntakePage from "../pages/client/ClientIntakePage";
 import ClientPortalPage from "../pages/client/ClientPortalPage";
@@ -96,6 +97,16 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute>
             <PaymentsPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected Therapist Analytics Dashboard (Module 7) */}
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <AnalyticsPage />
           </ProtectedRoute>
         }
       />

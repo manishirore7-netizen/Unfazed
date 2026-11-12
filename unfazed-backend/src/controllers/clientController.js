@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Client = require("../models/Client");
 const Booking = require("../models/Booking");
+const { canAccess } = require("../services/entitlementService");
 
 const VALID_STATUSES = ["active", "inactive", "lead", "archived", "discharged"];
 const EMAIL_REGEX = /^\S+@\S+\.\S+$/;
@@ -105,6 +106,19 @@ const createClient = async (req, res) => {
       currentMedications: typeof currentMedications === "string" ? currentMedications.trim() : "",
       goals: typeof goals === "string" ? goals.trim() : "",
     };
+
+    // Entitlement Check: Active-Client Cap (Module 7)
+    if (clientData.status === "active") {
+      const entitlement = await canAccess(req.therapistId, "active_clients");
+      if (!entitlement.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "FEATURE_RESTRICTED",
+          message: entitlement.reason,
+          entitlement,
+        });
+      }
+    }
 
     const client = await Client.create(clientData);
 
@@ -349,6 +363,19 @@ const updateClient = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "Tags must be an array of strings.",
+        });
+      }
+    }
+
+    // Entitlement Check: Active-Client Cap when promoting to active (Module 7)
+    if (client.status !== "active" && updates.status === "active") {
+      const entitlement = await canAccess(req.therapistId, "active_clients");
+      if (!entitlement.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "FEATURE_RESTRICTED",
+          message: entitlement.reason,
+          entitlement,
         });
       }
     }

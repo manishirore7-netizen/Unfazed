@@ -30,6 +30,15 @@ const noteSchema = new mongoose.Schema(
       required: [true, "Note type is required"],
       index: true,
     },
+    template: {
+      type: String,
+      enum: {
+        values: ["freeform", "soap", "dap", "girp", "birp"],
+        message: "Template must be freeform, soap, dap, girp, or birp",
+      },
+      default: "freeform",
+      index: true,
+    },
     title: {
       type: String,
       trim: true,

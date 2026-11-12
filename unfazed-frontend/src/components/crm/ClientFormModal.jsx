@@ -4,6 +4,7 @@ import Alert from "../common/Alert";
 import Button from "../common/Button";
 import Input from "../common/Input";
 import TagInput from "../common/TagInput";
+import UpgradeModal from "../subscription/UpgradeModal";
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active Client" },
@@ -90,6 +91,8 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
   const [formErrors, setFormErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
 
   // Validation
   const validate = () => {
@@ -170,11 +173,17 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
       }
     } catch (err) {
       console.error("Client form submission error:", err);
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        "An unexpected error occurred while saving the client.";
-      setServerError(msg);
+      if (err.response?.status === 403 && err.response?.data?.code === "FEATURE_RESTRICTED") {
+        const msg = err.response.data.message || "Active client limit reached for your plan.";
+        setServerError(msg);
+        setUpgradeMessage(msg);
+      } else {
+        const msg =
+          err.response?.data?.message ||
+          err.message ||
+          "An unexpected error occurred while saving the client.";
+        setServerError(msg);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -266,8 +275,23 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
 
       {/* Server Error Alert */}
       {serverError && (
-        <div className="px-6 pt-4">
-          <Alert variant="error" message={serverError} />
+        <div className="px-6 pt-4 space-y-2">
+          {upgradeMessage ? (
+            <div className="p-3.5 rounded-xl bg-[#FFF8E6] border border-[#F2E3B3] flex items-center justify-between gap-3 text-xs">
+              <span className="text-[#8C6D1F] font-medium leading-relaxed">
+                {upgradeMessage}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsUpgradeModalOpen(true)}
+                className="px-3.5 py-1.5 rounded-lg bg-[#8C6D1F] hover:bg-[#735817] text-white text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+              >
+                Upgrade Plan
+              </button>
+            </div>
+          ) : (
+            <Alert variant="error" message={serverError} />
+          )}
         </div>
       )}
 
@@ -648,6 +672,19 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
           </div>
         </div>
       </form>
+
+      <UpgradeModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        onUpgraded={() => {
+          setIsUpgradeModalOpen(false);
+          setServerError("");
+          setUpgradeMessage("");
+        }}
+        title="Upgrade to Add More Active Clients"
+        message={upgradeMessage}
+        requiredTier="pro"
+      />
     </div>
   );
 }

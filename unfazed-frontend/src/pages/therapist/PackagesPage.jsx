@@ -159,6 +159,12 @@ export default function PackagesPage() {
               Billing
             </Link>
             <Link
+              to="/analytics"
+              className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Analytics
+            </Link>
+            <Link
               to="/profile"
               className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-3 py-1.5 rounded-lg transition-colors"
             >
