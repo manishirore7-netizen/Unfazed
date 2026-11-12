@@ -52,6 +52,34 @@ export default function IntakeShareModal({ isOpen, onClose, client, onSuccess })
     }
   };
 
+  const handleGeneratePortalLink = async () => {
+    if (isGenerating) return;
+
+    setIsGenerating(true);
+    setError("");
+    setCopied(false);
+
+    try {
+      const res = await axiosInstance.post(`/clients/${client._id}/portal/initiate`);
+      if (res.data?.success && res.data?.data) {
+        const rawToken = res.data.data.portalToken;
+        const fullUrl = `${window.location.origin}/portal/${rawToken}`;
+        setIntakeUrl(fullUrl);
+        setHasGeneratedToken(true);
+      } else {
+        setError(res.data?.message || "Failed to generate client portal link.");
+      }
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          err.message ||
+          "An error occurred while generating the client portal link."
+      );
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const handleCopy = () => {
     if (!intakeUrl) return;
     navigator.clipboard.writeText(intakeUrl).then(() => {
@@ -127,7 +155,7 @@ export default function IntakeShareModal({ isOpen, onClose, client, onSuccess })
               This link allows the client to complete their demographics, clinical background, and sign the Informed Consent Agreement v1.0. Each link is single-use and expires in 7 days.
             </p>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -136,17 +164,39 @@ export default function IntakeShareModal({ isOpen, onClose, client, onSuccess })
               >
                 Cancel
               </Button>
+              {client.intakeStatus === "completed" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGenerateLink}
+                  isLoading={isGenerating}
+                  disabled={isGenerating}
+                  className="w-auto px-3.5 py-2 text-xs rounded-xl text-[#6F7D74]"
+                >
+                  Re-issue Intake
+                </Button>
+              )}
               <Button
                 type="button"
-                onClick={handleGenerateLink}
+                onClick={
+                  client.intakeStatus === "completed"
+                    ? handleGeneratePortalLink
+                    : handleGenerateLink
+                }
                 isLoading={isGenerating}
                 disabled={isGenerating}
-                className="w-auto px-5 py-2 text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5"
+                className="w-auto px-5 py-2 text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 bg-[#1B3B2B] hover:bg-[#234E39] text-white"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                 </svg>
-                <span>{client.intakeStatus === "pending" ? "Generate New Link" : "Generate Invitation Link"}</span>
+                <span>
+                  {client.intakeStatus === "completed"
+                    ? "Generate Client Portal Link"
+                    : client.intakeStatus === "pending"
+                    ? "Generate New Link"
+                    : "Generate Invitation Link"}
+                </span>
               </Button>
             </div>
           </div>

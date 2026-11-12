@@ -166,6 +166,16 @@ const clientSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+    // Client Healthcare Portal Access Tracking (Module 5)
+    portalTokenHash: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    portalTokenExpiresAt: {
+      type: Date,
+      default: null,
+    },
     // Digital Consent & Signature Tracking
     consentStatus: {
       type: String,

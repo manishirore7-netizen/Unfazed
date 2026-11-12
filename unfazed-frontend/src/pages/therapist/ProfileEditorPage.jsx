@@ -195,6 +195,12 @@ export default function ProfileEditorPage() {
             >
               Billing
             </Link>
+            <Link
+              to="/analytics"
+              className="text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              Analytics
+            </Link>
             <span className="text-xs text-[#717E76] hidden sm:inline">
               {therapist?.email}
             </span>

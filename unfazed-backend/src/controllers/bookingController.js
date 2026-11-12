@@ -6,6 +6,7 @@ const Booking = require("../models/Booking");
 const Client = require("../models/Client");
 const ClientPackage = require("../models/ClientPackage");
 const { calculateAvailableSlots } = require("../utils/slotCalculator");
+const { notificationService, NOTIFICATION_EVENTS } = require("../services/notificationService");
 const {
   isValidTimezone,
   is15MinAligned,
@@ -475,6 +476,17 @@ const createPublicBooking = async (req, res) => {
       throw crmErr;
     }
 
+    // Trigger event-driven notification (non-blocking)
+    notificationService.emit(NOTIFICATION_EVENTS.BOOKING_CONFIRMED, {
+      booking: newBooking,
+      therapist,
+      client: {
+        name: newBooking.clientName,
+        email: newBooking.clientEmail,
+        phone: newBooking.clientPhone,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Booking confirmed successfully.",
@@ -883,6 +895,17 @@ const createTherapistBooking = async (req, res) => {
         throw crmErr;
       }
     }
+
+    // Trigger event-driven notification (non-blocking)
+    notificationService.emit(NOTIFICATION_EVENTS.BOOKING_CONFIRMED, {
+      booking: newBooking,
+      therapist,
+      client: {
+        name: newBooking.clientName,
+        email: newBooking.clientEmail,
+        phone: newBooking.clientPhone,
+      },
+    });
 
     return res.status(201).json({
       success: true,
