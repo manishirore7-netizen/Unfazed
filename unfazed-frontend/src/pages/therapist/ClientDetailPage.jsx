@@ -8,6 +8,7 @@ import ClientFormModal from "../../components/crm/ClientFormModal";
 import TherapistBookingModal from "../../components/scheduling/TherapistBookingModal";
 import IntakeShareModal from "../../components/crm/IntakeShareModal";
 import PackageCheckoutModal from "../../components/payments/PackageCheckoutModal";
+import ClinicalNotesSection from "../../components/clinical/ClinicalNotesSection";
 import { formatUtcDate, formatUtcTimeRange12h } from "../../utils/dateHelpers";
 import { formatPaiseToInr } from "../../utils/razorpay";
 
@@ -1003,6 +1004,13 @@ export default function ClientDetailPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Clinical Documentation Notes Section (Module 5) */}
+                <ClinicalNotesSection
+                  clientId={id}
+                  clientName={client.name}
+                  clientBookings={clientBookings}
+                />
 
                 {/* Session History Card */}
                 <div className="bg-white border border-[#E9DFD2] rounded-2xl p-6 shadow-xs flex flex-col gap-4">

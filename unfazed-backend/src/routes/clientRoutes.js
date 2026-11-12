@@ -11,10 +11,25 @@ const {
 const {
   initiateIntake,
   getClientIntakeDetails,
+  initiatePortal,
 } = require("../controllers/intakeController");
+const { createNote, getNotes } = require("../controllers/noteController");
 
 // All client CRM routes require therapist authentication
 router.use(authMiddleware);
+
+// Client Portal endpoints (Therapist authenticated)
+router.post("/:id/portal/initiate", initiatePortal);
+
+// Client Clinical Notes endpoints (Therapist authenticated)
+router.get("/:id/notes", (req, res, next) => {
+  req.query.clientId = req.params.id;
+  return getNotes(req, res, next);
+});
+router.post("/:id/notes", (req, res, next) => {
+  req.body.clientId = req.params.id;
+  return createNote(req, res, next);
+});
 
 // Client Intake & Consent endpoints (Therapist authenticated)
 router.post("/:id/intake/initiate", initiateIntake);

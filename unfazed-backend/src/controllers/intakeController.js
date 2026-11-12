@@ -421,6 +421,11 @@ const submitIntake = async (req, res) => {
     client.intakeTokenHash = null;
     client.intakeTokenExpiresAt = null;
 
+    // Issue an independent, secure portal token for ongoing Client Portal access
+    const rawPortalToken = crypto.randomBytes(32).toString("hex");
+    client.portalTokenHash = hashToken(rawPortalToken);
+    client.portalTokenExpiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
     await client.save();
 
     return res.status(200).json({
@@ -431,6 +436,8 @@ const submitIntake = async (req, res) => {
         signedName: signatureName.trim(),
         consentStatus: "completed",
         intakeStatus: "completed",
+        portalToken: rawPortalToken,
+        portalPath: `/portal/${rawPortalToken}`,
       },
     });
   } catch (error) {
@@ -442,10 +449,62 @@ const submitIntake = async (req, res) => {
   }
 };
 
+/**
+ * Therapist initiates or refreshes client portal access token
+ * Route: POST /api/clients/:id/portal/initiate
+ * Access: Private (Therapist authenticated)
+ */
+const initiatePortal = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+    }
+
+    const client = await Client.findOne({
+      _id: id,
+      therapist_id: req.therapistId,
+    });
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found.",
+      });
+    }
+
+    const rawPortalToken = crypto.randomBytes(32).toString("hex");
+    client.portalTokenHash = hashToken(rawPortalToken);
+    client.portalTokenExpiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    await client.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Client portal link generated successfully.",
+      data: {
+        portalToken: rawPortalToken,
+        portalPath: `/portal/${rawPortalToken}`,
+        expiresAt: client.portalTokenExpiresAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error generating client portal link:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An unexpected error occurred while generating client portal link.",
+    });
+  }
+};
+
 module.exports = {
   hashToken,
   initiateIntake,
   getClientIntakeDetails,
   getIntakeByToken,
   submitIntake,
+  initiatePortal,
 };

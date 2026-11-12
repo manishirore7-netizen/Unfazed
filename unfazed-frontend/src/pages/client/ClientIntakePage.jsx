@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import axiosInstance from "../../api/axiosInstance";
 import Button from "../../components/common/Button";
 import Alert from "../../components/common/Alert";
@@ -14,6 +14,7 @@ export default function ClientIntakePage() {
   const [isAlreadyCompleted, setIsAlreadyCompleted] = useState(false);
   const [isSubmittedSuccessfully, setIsSubmittedSuccessfully] = useState(false);
   const [submittedTimestamp, setSubmittedTimestamp] = useState("");
+  const [portalToken, setPortalToken] = useState("");
   const [currentDateFormatted] = useState(() => new Date().toLocaleDateString());
 
   // Loaded intake form data
@@ -187,6 +188,9 @@ export default function ClientIntakePage() {
       const res = await axiosInstance.post(`/intake/${token}/submit`, payload);
       if (res.data?.success) {
         setSubmittedTimestamp(new Date().toLocaleString());
+        if (res.data?.data?.portalToken) {
+          setPortalToken(res.data.data.portalToken);
+        }
         setIsSubmittedSuccessfully(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -297,6 +301,14 @@ export default function ClientIntakePage() {
             <p className="text-xs sm:text-sm text-[#5E6D64] max-w-md mx-auto leading-relaxed">
               Your intake questionnaire and digital consent document have already been submitted and securely filed with your therapist.
             </p>
+            <div className="pt-2">
+              <Link
+                to={`/portal/${token}`}
+                className="px-5 py-2.5 text-xs font-medium text-white bg-[#1B3B2B] hover:bg-[#234E39] rounded-xl transition-colors inline-flex items-center gap-2"
+              >
+                <span>View Client Portal & Shared Care Notes →</span>
+              </Link>
+            </div>
           </div>
         ) : errorMessage ? (
           <div className="p-12 sm:p-16 bg-white border border-[#E9DFD2] rounded-2xl text-center space-y-4 shadow-xs">
@@ -340,8 +352,16 @@ export default function ClientIntakePage() {
                 {submittedTimestamp}
               </div>
             </div>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Link
+                to={portalToken ? `/portal/${portalToken}` : `/portal/${token}`}
+                className="px-5 py-2.5 text-xs font-medium text-white bg-[#1B3B2B] hover:bg-[#234E39] rounded-xl transition-colors inline-flex items-center gap-2"
+              >
+                <span>Access Client Portal & Shared Care Notes →</span>
+              </Link>
+            </div>
             <p className="text-[11px] text-[#8E9B93]">
-              You may safely close this browser window.
+              You may bookmark your client portal link to access future shared notes and session takeaways.
             </p>
           </div>
         ) : (

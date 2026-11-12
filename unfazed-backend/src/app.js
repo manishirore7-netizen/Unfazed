@@ -7,6 +7,7 @@ const clientRoutes = require("./routes/clientRoutes");
 const intakeRoutes = require("./routes/intakeRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const packageRoutes = require("./routes/packageRoutes");
+const noteRoutes = require("./routes/noteRoutes");
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/intake", intakeRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/packages", packageRoutes);
+app.use("/api/notes", noteRoutes);
 
 // Health check route
 app.get("/api/health", (req, res) => {
