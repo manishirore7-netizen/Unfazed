@@ -8,6 +8,8 @@ const intakeRoutes = require("./routes/intakeRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const packageRoutes = require("./routes/packageRoutes");
 const noteRoutes = require("./routes/noteRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 
@@ -73,6 +75,8 @@ app.use("/api/intake", intakeRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/notes", noteRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Health check route
 app.get("/api/health", (req, res) => {

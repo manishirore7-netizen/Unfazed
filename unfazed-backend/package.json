@@ -17,6 +17,7 @@
     "test:invoice": "node tests/paymentInvoice.test.js",
     "test:verify": "node tests/paymentVerification.test.js",
     "test:notes": "node tests/clinicalNotes.test.js",
+    "test:comm": "node tests/communication.test.js",
     "test:all": "node tests/schedulingModels.test.js && node tests/slotCalculator.test.js && node tests/schedulingIntegration.test.js",
     "start": "node server.js",
     "dev": "nodemon server.js"

@@ -9,6 +9,7 @@ import TherapistBookingModal from "../../components/scheduling/TherapistBookingM
 import IntakeShareModal from "../../components/crm/IntakeShareModal";
 import PackageCheckoutModal from "../../components/payments/PackageCheckoutModal";
 import ClinicalNotesSection from "../../components/clinical/ClinicalNotesSection";
+import ChatBox from "../../components/chat/ChatBox";
 import { formatUtcDate, formatUtcTimeRange12h } from "../../utils/dateHelpers";
 import { formatPaiseToInr } from "../../utils/razorpay";
 
@@ -1011,6 +1012,21 @@ export default function ClientDetailPage() {
                   clientName={client.name}
                   clientBookings={clientBookings}
                 />
+
+                {/* Direct Client Messaging (Module 6) */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-[#637269]">
+                      Direct Messaging (Module 6)
+                    </h2>
+                  </div>
+                  <ChatBox
+                    role="therapist"
+                    token={localStorage.getItem("unfazed_token")}
+                    clientId={id}
+                    recipientName={client.name}
+                  />
+                </div>
 
                 {/* Session History Card */}
                 <div className="bg-white border border-[#E9DFD2] rounded-2xl p-6 shadow-xs flex flex-col gap-4">
