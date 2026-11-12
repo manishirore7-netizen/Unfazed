@@ -49,6 +49,9 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
         },
         presentingConcern: clientToEdit.presentingConcern || "",
         relevantHistory: clientToEdit.relevantHistory || "",
+        medicalHistory: clientToEdit.medicalHistory || "",
+        mentalHealthHistory: clientToEdit.mentalHealthHistory || "",
+        currentMedications: clientToEdit.currentMedications || "",
         goals: clientToEdit.goals || "",
       };
     }
@@ -77,6 +80,9 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
       },
       presentingConcern: "",
       relevantHistory: "",
+      medicalHistory: "",
+      mentalHealthHistory: "",
+      currentMedications: "",
       goals: "",
     };
   });
@@ -508,15 +514,68 @@ function ClientFormContent({ clientToEdit, onClose, onSuccess }) {
                 htmlFor="relevant-history"
                 className="text-xs font-semibold tracking-wide uppercase text-[#3E4A43]"
               >
-                Relevant History
+                Relevant History & Background
               </label>
               <textarea
                 id="relevant-history"
-                rows={4}
+                rows={3}
                 value={formData.relevantHistory}
                 onChange={(e) => handleInputChange("relevantHistory", e.target.value)}
-                placeholder="Key background context, previous therapy experience, medical history, or family dynamics..."
+                placeholder="Key background context, family dynamics, or psychosocial history..."
                 className="w-full px-4 py-3 text-sm rounded-xl bg-[#FCFAF7] border border-[#DCD4C7] transition-colors duration-150 text-[#1C2520] placeholder-[#8E9B93] focus:outline-none focus:bg-white focus:border-[#1B3B2B] focus:ring-2 focus:ring-[#1B3B2B]/15"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="medical-history"
+                  className="text-xs font-semibold tracking-wide uppercase text-[#3E4A43]"
+                >
+                  Medical Conditions
+                </label>
+                <textarea
+                  id="medical-history"
+                  rows={2}
+                  value={formData.medicalHistory}
+                  onChange={(e) => handleInputChange("medicalHistory", e.target.value)}
+                  placeholder="Chronic conditions, physical health issues..."
+                  className="w-full px-4 py-3 text-sm rounded-xl bg-[#FCFAF7] border border-[#DCD4C7] transition-colors duration-150 text-[#1C2520] placeholder-[#8E9B93] focus:outline-none focus:bg-white focus:border-[#1B3B2B] focus:ring-2 focus:ring-[#1B3B2B]/15"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label
+                  htmlFor="mental-health-history"
+                  className="text-xs font-semibold tracking-wide uppercase text-[#3E4A43]"
+                >
+                  Mental Health History
+                </label>
+                <textarea
+                  id="mental-health-history"
+                  rows={2}
+                  value={formData.mentalHealthHistory}
+                  onChange={(e) => handleInputChange("mentalHealthHistory", e.target.value)}
+                  placeholder="Prior therapy, diagnoses, psychiatric care..."
+                  className="w-full px-4 py-3 text-sm rounded-xl bg-[#FCFAF7] border border-[#DCD4C7] transition-colors duration-150 text-[#1C2520] placeholder-[#8E9B93] focus:outline-none focus:bg-white focus:border-[#1B3B2B] focus:ring-2 focus:ring-[#1B3B2B]/15"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="current-medications"
+                className="text-xs font-semibold tracking-wide uppercase text-[#3E4A43]"
+              >
+                Current Medications
+              </label>
+              <input
+                id="current-medications"
+                type="text"
+                value={formData.currentMedications}
+                onChange={(e) => handleInputChange("currentMedications", e.target.value)}
+                placeholder="Prescriptions, supplements, dosages..."
+                className="w-full px-4 py-2.5 text-sm rounded-xl bg-[#FCFAF7] border border-[#DCD4C7] transition-colors duration-150 text-[#1C2520] placeholder-[#8E9B93] focus:outline-none focus:bg-white focus:border-[#1B3B2B] focus:ring-2 focus:ring-[#1B3B2B]/15"
               />
             </div>
 

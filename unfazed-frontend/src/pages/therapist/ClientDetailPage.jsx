@@ -6,7 +6,51 @@ import Button from "../../components/common/Button";
 import Alert from "../../components/common/Alert";
 import ClientFormModal from "../../components/crm/ClientFormModal";
 import TherapistBookingModal from "../../components/scheduling/TherapistBookingModal";
+import IntakeShareModal from "../../components/crm/IntakeShareModal";
+import PackageCheckoutModal from "../../components/payments/PackageCheckoutModal";
 import { formatUtcDate, formatUtcTimeRange12h } from "../../utils/dateHelpers";
+import { formatPaiseToInr } from "../../utils/razorpay";
+
+const INTAKE_BADGES = {
+  not_sent: {
+    label: "Intake Not Sent",
+    bg: "bg-[#F0EAE2]",
+    text: "text-[#55635B]",
+    border: "border-[#DDD5C7]",
+    dot: "bg-[#717E76]",
+  },
+  pending: {
+    label: "Intake Sent (Pending)",
+    bg: "bg-[#FFF8E6]",
+    text: "text-[#8C6D1F]",
+    border: "border-[#F2E3B3]",
+    dot: "bg-[#C49B28]",
+  },
+  completed: {
+    label: "Intake Completed",
+    bg: "bg-[#EBF3ED]",
+    text: "text-[#1E4D32]",
+    border: "border-[#CDE3D5]",
+    dot: "bg-[#2A6543]",
+  },
+};
+
+const CONSENT_BADGES = {
+  pending: {
+    label: "Consent Pending",
+    bg: "bg-[#FFF8E6]",
+    text: "text-[#8C6D1F]",
+    border: "border-[#F2E3B3]",
+    dot: "bg-[#C49B28]",
+  },
+  completed: {
+    label: "Consent Signed v1.0",
+    bg: "bg-[#EBF3ED]",
+    text: "text-[#1E4D32]",
+    border: "border-[#CDE3D5]",
+    dot: "bg-[#2A6543]",
+  },
+};
 
 const STATUS_BADGES = {
   active: {
@@ -65,6 +109,8 @@ export default function ClientDetailPage() {
 
   const [client, setClient] = useState(null);
   const [bookings, setBookings] = useState([]);
+  const [clientPackages, setClientPackages] = useState([]);
+  const [availablePackages, setAvailablePackages] = useState([]);
   const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -74,19 +120,27 @@ export default function ClientDetailPage() {
   // Modals
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [isIntakeShareModalOpen, setIsIntakeShareModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  // Fetch client details and bookings
+  // Package Purchase on behalf of client
+  const [isPackagePickerOpen, setIsPackagePickerOpen] = useState(false);
+  const [selectedPackageToBuy, setSelectedPackageToBuy] = useState(null);
+  const [isPackageCheckoutOpen, setIsPackageCheckoutOpen] = useState(false);
+
+  // Fetch client details, bookings, and purchased packages
   useEffect(() => {
     let isMounted = true;
 
     Promise.allSettled([
       axiosInstance.get(`/clients/${id}`),
       axiosInstance.get("/scheduling/bookings"),
+      axiosInstance.get("/packages/client-packages", { params: { clientId: id } }),
+      axiosInstance.get("/packages", { params: { active: true } }),
     ])
-      .then(([clientRes, bookingsRes]) => {
+      .then(([clientRes, bookingsRes, clientPkgRes, availPkgRes]) => {
         if (!isMounted) return;
 
         if (clientRes.status === "fulfilled" && clientRes.value.data?.success) {
@@ -102,6 +156,14 @@ export default function ClientDetailPage() {
         if (bookingsRes.status === "fulfilled" && bookingsRes.value.data?.success) {
           setBookings(bookingsRes.value.data.data || []);
           setCurrentTimestamp(Date.now());
+        }
+
+        if (clientPkgRes.status === "fulfilled" && clientPkgRes.value.data?.success) {
+          setClientPackages(clientPkgRes.value.data.data || []);
+        }
+
+        if (availPkgRes.status === "fulfilled" && availPkgRes.value.data?.success) {
+          setAvailablePackages(availPkgRes.value.data.data || []);
         }
       })
       .finally(() => {
@@ -158,6 +220,14 @@ export default function ClientDetailPage() {
   const statusConfig = client?.status
     ? STATUS_BADGES[client.status] || STATUS_BADGES.active
     : STATUS_BADGES.active;
+
+  const intakeConfig = client?.intakeStatus
+    ? INTAKE_BADGES[client.intakeStatus] || INTAKE_BADGES.not_sent
+    : INTAKE_BADGES.not_sent;
+
+  const consentConfig = client?.consentStatus
+    ? CONSENT_BADGES[client.consentStatus] || CONSENT_BADGES.pending
+    : CONSENT_BADGES.pending;
 
   const initials = client?.name
     ? client.name
@@ -216,6 +286,18 @@ export default function ClientDetailPage() {
               className="text-xs font-semibold text-[#1B3B2B] bg-[#EBF3ED] border border-[#CDE3D5] px-3.5 py-1.5 rounded-lg transition-colors"
             >
               Clients
+            </Link>
+            <Link
+              to="/packages"
+              className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Packages
+            </Link>
+            <Link
+              to="/payments"
+              className="text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Billing
             </Link>
             <Link
               to="/profile"
@@ -331,6 +413,20 @@ export default function ClientDetailPage() {
                       <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`}></span>
                       {statusConfig.label}
                     </span>
+
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${intakeConfig.bg} ${intakeConfig.text} ${intakeConfig.border}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${intakeConfig.dot}`}></span>
+                      {intakeConfig.label}
+                    </span>
+
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${consentConfig.bg} ${consentConfig.text} ${consentConfig.border}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${consentConfig.dot}`}></span>
+                      {consentConfig.label}
+                    </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#6F7D74]">
@@ -347,6 +443,28 @@ export default function ClientDetailPage() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-2.5 self-start md:self-center">
+                <button
+                  type="button"
+                  onClick={() => setIsIntakeShareModalOpen(true)}
+                  className="px-4 py-2 text-xs font-medium text-[#1B3B2B] bg-[#FAF8F5] hover:bg-[#F3EFEA] border border-[#DCD4C7] rounded-xl transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5 text-[#1B3B2B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <span>
+                    {client.intakeStatus === "completed"
+                      ? "Intake & Consent Completed"
+                      : client.intakeStatus === "pending"
+                      ? "Copy Intake Link"
+                      : "Send Intake Link"}
+                  </span>
+                </button>
+
                 <Button
                   type="button"
                   variant="outline"
@@ -529,6 +647,261 @@ export default function ClientDetailPage() {
 
               {/* Right Column: Clinical Context & Session History */}
               <div className="lg:col-span-2 flex flex-col gap-6">
+                {/* Intake & Consent Workflow Status Card */}
+                <div className="bg-white border border-[#E9DFD2] rounded-2xl p-6 shadow-xs flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-[#EAE2D6] pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-[#EBF3ED] text-[#1B3B2B] flex items-center justify-center">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                      </div>
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-[#637269]">
+                        Digital Intake & Informed Consent
+                      </h2>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsIntakeShareModalOpen(true)}
+                      className="text-xs font-medium text-[#1B3B2B] hover:underline cursor-pointer"
+                    >
+                      {client.intakeStatus === "completed"
+                        ? "Re-issue Intake Link →"
+                        : client.intakeStatus === "pending"
+                        ? "Copy Active Link →"
+                        : "Send Intake Link →"}
+                    </button>
+                  </div>
+
+                  {client.intakeStatus === "completed" ? (
+                    <div className="space-y-3.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-[#EBF3ED] border border-[#CDE3D5] rounded-xl text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-[#2A6543]"></span>
+                          <span className="font-semibold text-[#1E4D32]">
+                            Intake & Consent Completed
+                          </span>
+                        </div>
+                        {client.intakeSubmittedAt && (
+                          <span className="text-[11px] text-[#2A6543]">
+                            Submitted on {formatUtcDate(client.intakeSubmittedAt)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Signed Consent Record Audit */}
+                      <div className="p-4 bg-[#FAF8F5] border border-[#EDE5DA] rounded-xl text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-[#14261D]">
+                            Informed Consent Agreement (v{client.consentRecord?.documentVersion || "1.0"})
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-[#EBF3ED] text-[#1E4D32] border border-[#CDE3D5]">
+                            Signed & Verified
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#55635B] pt-1">
+                          <div>
+                            <span className="text-[#8E9B93]">Digitally Signed By: </span>
+                            <strong className="text-[#14261D]">
+                              {client.consentRecord?.signedName || client.name}
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="text-[#8E9B93]">Timestamp: </span>
+                            <span>
+                              {client.consentRecord?.signedAt
+                                ? new Date(client.consentRecord.signedAt).toLocaleString()
+                                : "On file"}
+                            </span>
+                          </div>
+                          {client.consentRecord?.ipAddress && (
+                            <div className="sm:col-span-2">
+                              <span className="text-[#8E9B93]">Audit IP: </span>
+                              <span className="font-mono text-[10px]">
+                                {client.consentRecord.ipAddress}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="text-[10px] text-[#717E76] pt-1 italic">
+                          Client verified scope of services, confidentiality limitations, 24h cancellation terms, billing policy, and emergency crisis protocols.
+                        </p>
+                      </div>
+                    </div>
+                  ) : client.intakeStatus === "pending" ? (
+                    <div className="p-4 bg-[#FFF8E6] border border-[#F2E3B3] rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-1.5 font-semibold text-[#8C6D1F]">
+                          <span className="w-2 h-2 rounded-full bg-[#C49B28]"></span>
+                          <span>Intake Link Active — Awaiting Client Submission</span>
+                        </div>
+                        <p className="text-[11px] text-[#786026] mt-0.5">
+                          Invitation link was generated and is valid for 7 days. Once submitted, clinical notes and signature will appear here.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsIntakeShareModalOpen(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-[#8C6D1F] bg-white border border-[#E8D49E] hover:bg-[#FFF5D6] rounded-lg transition-colors shrink-0 cursor-pointer"
+                      >
+                        Copy Link
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-[#FAF8F5] border border-[#E9DFD2] rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="font-semibold text-[#3D4C42] block">
+                          No digital intake workflow initiated
+                        </span>
+                        <p className="text-[11px] text-[#6F7D74] mt-0.5">
+                          Generate a secure, single-use link for this client to complete their clinical background and digital consent before their appointment.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsIntakeShareModalOpen(true)}
+                        className="px-3.5 py-1.5 text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] rounded-xl transition-colors shrink-0 cursor-pointer"
+                      >
+                        Send Intake Link
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Purchased Packages & Session Credits Card */}
+                <div className="bg-white border border-[#E9DFD2] rounded-2xl p-6 shadow-xs flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-[#EAE2D6] pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-[#EBF3ED] text-[#1B3B2B] flex items-center justify-center">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                          />
+                        </svg>
+                      </div>
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-[#637269]">
+                        Purchased Packages & Session Credits ({clientPackages.length})
+                      </h2>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsPackagePickerOpen(true)}
+                      className="text-xs font-medium text-[#1B3B2B] hover:underline cursor-pointer"
+                    >
+                      + Sell / Assign Package →
+                    </button>
+                  </div>
+
+                  {clientPackages.length === 0 ? (
+                    <div className="p-4 bg-[#FAF8F5] border border-[#E9DFD2] rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="font-semibold text-[#3D4C42] block">
+                          No active session packages
+                        </span>
+                        <p className="text-[11px] text-[#6F7D74] mt-0.5">
+                          This client currently has no prepaid package credits. Assign a bundle to enable automated credit-based bookings.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsPackagePickerOpen(true)}
+                        className="px-3.5 py-1.5 text-xs font-medium text-[#1B3B2B] bg-[#EBF3ED] hover:bg-[#DEEDE2] border border-[#CDE3D5] rounded-xl transition-colors shrink-0 cursor-pointer"
+                      >
+                        Assign Package
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {clientPackages.map((cp) => {
+                        const isExhausted = cp.status === "exhausted" || cp.remainingSessions <= 0;
+                        const isExpired =
+                          cp.status === "expired" ||
+                          (cp.expiresAt ? Date.parse(cp.expiresAt) < currentTimestamp : false);
+                        const progressPercent = Math.min(
+                          100,
+                          Math.round((cp.usedSessions / cp.totalSessions) * 100)
+                        );
+
+                        return (
+                          <div
+                            key={cp._id}
+                            className="p-4 bg-[#FAF8F5] border border-[#EDE5DA] rounded-xl flex flex-col gap-3 text-xs"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div>
+                                <h4 className="font-serif font-medium text-sm text-[#14261D]">
+                                  {cp.packageId?.title || "Session Package"}
+                                </h4>
+                                <p className="text-[11px] text-[#697970] mt-0.5">
+                                  {cp.packageId?.durationMinutes || 60} mins per session · Purchased{" "}
+                                  {formatUtcDate(cp.createdAt)}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    cp.status === "active" && !isExpired && !isExhausted
+                                      ? "bg-[#EBF3ED] text-[#1E4D32] border border-[#CDE3D5]"
+                                      : isExhausted
+                                      ? "bg-[#FFF8E6] text-[#8C6D1F] border border-[#F2E3B3]"
+                                      : "bg-[#F3EFEA] text-[#717E76] border border-[#E0D8CB]"
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      cp.status === "active" && !isExpired && !isExhausted
+                                        ? "bg-[#2A6543]"
+                                        : isExhausted
+                                        ? "bg-[#C49B28]"
+                                        : "bg-[#8E9B93]"
+                                    }`}
+                                  ></span>
+                                  {cp.status === "active" && !isExpired && !isExhausted
+                                    ? "Active"
+                                    : isExhausted
+                                    ? "Exhausted"
+                                    : "Expired"}
+                                </span>
+
+                                <span className="text-[11px] font-semibold text-[#1B3B2B] bg-white border border-[#D9D1C5] px-2.5 py-0.5 rounded-md">
+                                  {cp.remainingSessions} / {cp.totalSessions} credits left
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Credit Usage Progress Bar */}
+                            <div className="space-y-1">
+                              <div className="w-full bg-[#E5DDCF] h-2 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-[#1B3B2B] h-full transition-all duration-300"
+                                  style={{ width: `${progressPercent}%` }}
+                                ></div>
+                              </div>
+                              <div className="flex justify-between text-[10px] text-[#717E76]">
+                                <span>{cp.usedSessions} used</span>
+                                <span>Valid until {formatUtcDate(cp.expiresAt)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* Clinical Context Card */}
                 <div className="bg-white border border-[#E9DFD2] rounded-2xl p-6 shadow-xs flex flex-col gap-5">
                   <div className="flex items-center justify-between border-b border-[#EAE2D6] pb-3">
@@ -538,7 +911,7 @@ export default function ClientDetailPage() {
                     <button
                       type="button"
                       onClick={() => setIsEditModalOpen(true)}
-                      className="text-xs font-medium text-[#1B3B2B] hover:underline"
+                      className="text-xs font-medium text-[#1B3B2B] hover:underline cursor-pointer"
                     >
                       Edit Context →
                     </button>
@@ -551,7 +924,7 @@ export default function ClientDetailPage() {
                     </span>
                     <p className="text-xs sm:text-sm text-[#27382F] leading-relaxed bg-[#FAF8F5] p-3.5 rounded-xl border border-[#EDE5DA]">
                       {client.presentingConcern ||
-                        "No presenting concern documented. Click 'Edit Context' to add intake notes."}
+                        "No presenting concern documented. Click 'Edit Context' or send intake form to add."}
                     </p>
                   </div>
 
@@ -563,6 +936,37 @@ export default function ClientDetailPage() {
                     <p className="text-xs sm:text-sm text-[#27382F] leading-relaxed bg-[#FAF8F5] p-3.5 rounded-xl border border-[#EDE5DA]">
                       {client.relevantHistory ||
                         "No relevant history documented."}
+                    </p>
+                  </div>
+
+                  {/* Medical Conditions & Mental Health History Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#526358] block">
+                        Medical History
+                      </span>
+                      <p className="text-xs text-[#27382F] leading-relaxed bg-[#FAF8F5] p-3 rounded-xl border border-[#EDE5DA] min-h-[60px]">
+                        {client.medicalHistory || "None documented."}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#526358] block">
+                        Mental Health History
+                      </span>
+                      <p className="text-xs text-[#27382F] leading-relaxed bg-[#FAF8F5] p-3 rounded-xl border border-[#EDE5DA] min-h-[60px]">
+                        {client.mentalHealthHistory || "None documented."}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Current Medications */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-[#526358] block">
+                      Current Medications
+                    </span>
+                    <p className="text-xs text-[#27382F] leading-relaxed bg-[#FAF8F5] p-3 rounded-xl border border-[#EDE5DA]">
+                      {client.currentMedications || "None reported."}
                     </p>
                   </div>
 
@@ -700,6 +1104,112 @@ export default function ClientDetailPage() {
           setTimeout(() => setSuccessMessage(""), 4000);
         }}
       />
+
+      {/* Intake & Consent Share Modal */}
+      <IntakeShareModal
+        isOpen={isIntakeShareModalOpen}
+        onClose={() => setIsIntakeShareModalOpen(false)}
+        client={client}
+        onSuccess={() => {
+          setRefreshKey((k) => k + 1);
+        }}
+      />
+
+      {/* Package Picker Modal */}
+      {isPackagePickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#15231B]/50 backdrop-blur-xs p-4">
+          <div className="bg-white border border-[#E8DFD3] rounded-2xl p-6 max-w-lg w-full shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#EAE2D6] pb-3">
+              <div>
+                <h3 className="font-serif font-medium text-lg text-[#14261D]">
+                  Select Package to Assign
+                </h3>
+                <p className="text-xs text-[#6F7D74]">
+                  Assign a multi-session bundle to {client?.name}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPackagePickerOpen(false)}
+                className="w-7 h-7 rounded-full bg-[#FAF7F2] hover:bg-[#EAE2D6] text-[#637269] flex items-center justify-center text-xs transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {availablePackages.length === 0 ? (
+              <div className="py-6 text-center text-xs text-[#6F7D74]">
+                No active packages available. Please create a package in the{" "}
+                <Link to="/packages" className="text-[#1B3B2B] font-medium underline">
+                  Packages
+                </Link>{" "}
+                section first.
+              </div>
+            ) : (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                {availablePackages.map((pkg) => (
+                  <div
+                    key={pkg._id}
+                    className="p-3.5 bg-[#FAF8F5] border border-[#EDE5DA] rounded-xl flex items-center justify-between gap-3 hover:border-[#1B3B2B]/40 transition-colors"
+                  >
+                    <div>
+                      <h4 className="font-medium text-xs text-[#14261D]">{pkg.title}</h4>
+                      <p className="text-[11px] text-[#697970] mt-0.5">
+                        {pkg.sessionCount} Sessions · {pkg.durationMinutes} mins · {pkg.validityDays} Days
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-serif font-semibold text-xs text-[#1B3B2B]">
+                        {formatPaiseToInr(pkg.price)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPackageToBuy(pkg);
+                          setIsPackagePickerOpen(false);
+                          setIsPackageCheckoutOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-[#1B3B2B] text-white hover:bg-[#234E39] text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        Select & Checkout
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-[#EAE2D6]">
+              <button
+                type="button"
+                onClick={() => setIsPackagePickerOpen(false)}
+                className="px-4 py-2 text-xs font-medium text-[#4C5B52] hover:text-[#1B3B2B] hover:bg-[#F3EFEA] rounded-xl transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Package Checkout Modal */}
+      {selectedPackageToBuy && (
+        <PackageCheckoutModal
+          isOpen={isPackageCheckoutOpen}
+          onClose={() => {
+            setIsPackageCheckoutOpen(false);
+            setSelectedPackageToBuy(null);
+          }}
+          packageData={selectedPackageToBuy}
+          prefilledClient={client}
+          isTherapistInitiated={true}
+          onSuccess={() => {
+            setRefreshKey((k) => k + 1);
+            setSuccessMessage("Package credits successfully activated for this client.");
+          }}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (

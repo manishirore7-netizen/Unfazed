@@ -10,6 +10,12 @@
     "test:scheduling": "node tests/schedulingIntegration.test.js",
     "test:crm": "node tests/clientCrm.test.js",
     "test:sync": "node tests/bookingCrmSync.test.js",
+    "test:intake": "node tests/intakeConsent.test.js",
+    "test:payments": "node tests/paymentModels.test.js",
+    "test:webhook": "node tests/paymentWebhook.test.js",
+    "test:packages": "node tests/packageCredits.test.js",
+    "test:invoice": "node tests/paymentInvoice.test.js",
+    "test:verify": "node tests/paymentVerification.test.js",
     "test:all": "node tests/schedulingModels.test.js && node tests/slotCalculator.test.js && node tests/schedulingIntegration.test.js",
     "start": "node server.js",
     "dev": "nodemon server.js"

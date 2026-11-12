@@ -2,6 +2,7 @@ const Availability = require("../models/Availability");
 const AvailabilityOverride = require("../models/AvailabilityOverride");
 const BlockedSlot = require("../models/BlockedSlot");
 const Booking = require("../models/Booking");
+const ClientPackage = require("../models/ClientPackage");
 const { isValidTimezone, is15MinAligned } = require("../utils/timezoneUtils");
 
 /**
@@ -499,6 +500,22 @@ const cancelBooking = async (req, res) => {
         success: false,
         message: "Booking not found.",
       });
+    }
+
+    // Refund policy for session packages:
+    // If cancelled booking was redeemed using a package credit, restore 1 credit to the ClientPackage
+    if (booking.paymentStatus === "package_credit" && booking.clientPackageId) {
+      const clientPkg = await ClientPackage.findById(booking.clientPackageId);
+      if (clientPkg) {
+        clientPkg.remainingSessions += 1;
+        clientPkg.usedSessions = Math.max(0, clientPkg.usedSessions - 1);
+        if (clientPkg.status === "exhausted" && clientPkg.remainingSessions > 0) {
+          clientPkg.status = "active";
+        }
+        await clientPkg.save();
+      }
+      booking.paymentStatus = "waived";
+      await booking.save();
     }
 
     return res.status(200).json({

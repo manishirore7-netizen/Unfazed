@@ -115,11 +115,92 @@ const clientSchema = new mongoose.Schema(
       default: "",
       maxlength: [5000, "Relevant history cannot exceed 5000 characters"],
     },
+    medicalHistory: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: [3000, "Medical history cannot exceed 3000 characters"],
+    },
+    mentalHealthHistory: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: [3000, "Mental health history cannot exceed 3000 characters"],
+    },
+    currentMedications: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: [2000, "Current medications cannot exceed 2000 characters"],
+    },
     goals: {
       type: String,
       trim: true,
       default: "",
       maxlength: [2000, "Goals cannot exceed 2000 characters"],
+    },
+    // Digital Intake Workflow Tracking
+    intakeStatus: {
+      type: String,
+      enum: {
+        values: ["not_sent", "pending", "completed"],
+        message: "Intake status must be not_sent, pending, or completed",
+      },
+      default: "not_sent",
+      index: true,
+    },
+    intakeTokenHash: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    intakeTokenExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    intakeSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    intakeResponses: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    // Digital Consent & Signature Tracking
+    consentStatus: {
+      type: String,
+      enum: {
+        values: ["pending", "completed"],
+        message: "Consent status must be pending or completed",
+      },
+      default: "pending",
+      index: true,
+    },
+    consentRecord: {
+      agreed: {
+        type: Boolean,
+        default: false,
+      },
+      signedName: {
+        type: String,
+        trim: true,
+        default: "",
+        maxlength: [100, "Signatory name cannot exceed 100 characters"],
+      },
+      signedAt: {
+        type: Date,
+        default: null,
+      },
+      documentVersion: {
+        type: String,
+        trim: true,
+        default: "1.0",
+      },
+      ipAddress: {
+        type: String,
+        trim: true,
+        default: "",
+      },
     },
   },
   {
