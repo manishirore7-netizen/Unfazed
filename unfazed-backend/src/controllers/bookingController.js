@@ -7,6 +7,7 @@ const Client = require("../models/Client");
 const ClientPackage = require("../models/ClientPackage");
 const { calculateAvailableSlots } = require("../utils/slotCalculator");
 const { notificationService, NOTIFICATION_EVENTS } = require("../services/notificationService");
+const { canAccess } = require("../services/entitlementService");
 const {
   isValidTimezone,
   is15MinAligned,
@@ -18,6 +19,7 @@ const {
  * Safely find or create a Client for a therapist when an appointment is booked.
  * Preserves all existing client demographics, clinical history, goals, and tags.
  * Concurrency-safe against race conditions on the unique { therapist_id, email } index.
+ * Enforces centralized EntitlementService active-client capacity before creating new clients.
  */
 const syncClientForBooking = async ({ therapistId, clientName, clientEmail, clientPhone }) => {
   const normalizedEmail = clientEmail.trim().toLowerCase();
@@ -33,7 +35,20 @@ const syncClientForBooking = async ({ therapistId, clientName, clientEmail, clie
     return client;
   }
 
-  // 2. Client does not exist: create new record
+  // 2. Client does not exist: enforce active client cap before creating new record
+  const entitlement = await canAccess(therapistId, "active_clients");
+  if (!entitlement.allowed) {
+    const error = new Error(
+      entitlement.reason || "Active client limit reached for this practice."
+    );
+    error.code = "FEATURE_RESTRICTED";
+    error.status = 403;
+    error.statusCode = 403;
+    error.entitlement = entitlement;
+    throw error;
+  }
+
+  // 3. Client does not exist and cap not exceeded: create new record
   try {
     client = await Client.create({
       therapist_id: therapistId,
@@ -344,6 +359,26 @@ const createPublicBooking = async (req, res) => {
       });
     }
 
+    // 10.2 Entitlement Check: Ensure therapist has active-client capacity if this is a new client
+    const existingClientForCap = await Client.findOne({
+      therapist_id: therapist._id,
+      email: normalizedEmail,
+    });
+
+    if (!existingClientForCap) {
+      const entitlement = await canAccess(therapist._id, "active_clients");
+      if (!entitlement.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "FEATURE_RESTRICTED",
+          message:
+            entitlement.reason ||
+            "This practice has reached its maximum client capacity and cannot accept new clients at this time.",
+          entitlement,
+        });
+      }
+    }
+
     // 10.5 Session Credit Redemption: check and deduct package credit if requested
     let redeemedPkg = null;
     let paymentStatus = "unpaid";
@@ -510,6 +545,15 @@ const createPublicBooking = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.code === "FEATURE_RESTRICTED" || error.status === 403 || error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        code: "FEATURE_RESTRICTED",
+        message: error.message,
+        entitlement: error.entitlement,
+      });
+    }
+
     console.error("Error creating booking:", error);
     return res.status(500).json({
       success: false,
@@ -700,7 +744,7 @@ const createTherapistBooking = async (req, res) => {
       });
     }
 
-    // 3. If clientId is provided, verify ownership
+    // 3. If clientId is provided, verify ownership; otherwise check if client email already exists
     let clientRecord = null;
     if (clientId) {
       clientRecord = await Client.findOne({
@@ -711,6 +755,26 @@ const createTherapistBooking = async (req, res) => {
         return res.status(404).json({
           success: false,
           message: "Client not found or belongs to another practice.",
+        });
+      }
+    } else if (clientEmail) {
+      clientRecord = await Client.findOne({
+        therapist_id: therapistId,
+        email: normalizedEmail,
+      });
+    }
+
+    // If client does not exist, scheduling this booking will create a new client: check active-client cap
+    if (!clientRecord) {
+      const entitlement = await canAccess(therapistId, "active_clients");
+      if (!entitlement.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "FEATURE_RESTRICTED",
+          message:
+            entitlement.reason ||
+            "Active client limit reached for your plan. Upgrade to expand your active client capacity.",
+          entitlement,
         });
       }
     }
@@ -930,6 +994,15 @@ const createTherapistBooking = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.code === "FEATURE_RESTRICTED" || error.status === 403 || error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        code: "FEATURE_RESTRICTED",
+        message: error.message,
+        entitlement: error.entitlement,
+      });
+    }
+
     console.error("Error creating therapist booking:", error);
     return res.status(500).json({
       success: false,

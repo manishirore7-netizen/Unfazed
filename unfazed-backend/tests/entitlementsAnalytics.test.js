@@ -9,6 +9,7 @@ const Client = require("../src/models/Client");
 const Note = require("../src/models/Note");
 const Payment = require("../src/models/Payment");
 const Booking = require("../src/models/Booking");
+const Availability = require("../src/models/Availability");
 const { canAccess, getEntitlements, entitlementService } = require("../src/services/entitlementService");
 const { SUBSCRIPTION_TIERS, SubscriptionTierConfig } = require("../src/config/subscriptionTierConfig");
 
@@ -19,6 +20,7 @@ async function runEntitlementsAnalyticsTestSuite() {
 
   let server;
   let baseUrl;
+  let overcapTherapist;
   const results = [];
   const uniqueId = Date.now();
 
@@ -293,6 +295,227 @@ async function runEntitlementsAnalyticsTestSuite() {
         pass: res.status === 200 && data.data?.status === "active",
         expected: "200 OK after tier upgrade",
         actual: `${res.status} (status: ${data.data?.status})`,
+      };
+    });
+
+    // Seed Overcap Therapist (starts at Starter tier with 21 active clients, replicating production)
+    const overcapUnique = `${uniqueId}-overcap`;
+    overcapTherapist = await Therapist.create({
+      name: "Dr. Overcap Practitioner",
+      email: `dr.overcap.${overcapUnique}@example.com`,
+      password_hash: "hash",
+      slug: `overcap-${overcapUnique}`,
+      subscription: {
+        tier: "starter",
+        status: "active",
+      },
+    });
+    const overcapToken = jwt.sign({ therapistId: overcapTherapist._id.toString() }, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    // Seed 21 active clients for overcapTherapist
+    const overcapClients = [];
+    for (let i = 1; i <= 21; i++) {
+      const c = await Client.create({
+        therapist_id: overcapTherapist._id,
+        name: `Overcap Client ${i}`,
+        email: `overcap.client.${i}.${overcapUnique}@example.com`,
+        phone: `+9199999000${i.toString().padStart(2, "0")}`,
+        status: "active",
+      });
+      overcapClients.push(c);
+    }
+
+    // Configure open availability for overcapTherapist
+    await Availability.create({
+      therapistId: overcapTherapist._id,
+      timezone: "UTC",
+      sessionDurations: [30, 45, 60, 90],
+      bufferTimeMinutes: 0,
+      noticePeriodHours: 0,
+      bookingWindowDays: 60,
+      weeklySchedule: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+        dayOfWeek,
+        isOpen: true,
+        timeSlots: [{ startTime: "09:00", endTime: "18:00" }],
+      })),
+    });
+
+    await testCase("CAP-06", "Creation above the cap (21 clients on Starter) is rejected with 403 FEATURE_RESTRICTED", async () => {
+      const res = await fetch(`${baseUrl}/api/clients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${overcapToken}`,
+        },
+        body: JSON.stringify({
+          name: "Attempted Client 22",
+          email: `client.22.${overcapUnique}@example.com`,
+          status: "active",
+        }),
+      });
+      const data = await res.json();
+      return {
+        pass:
+          res.status === 403 &&
+          data.code === "FEATURE_RESTRICTED" &&
+          data.entitlement?.limit === 5 &&
+          data.entitlement?.currentCount >= 21,
+        expected: "403 with code FEATURE_RESTRICTED when count is 21",
+        actual: `${res.status} (code: ${data.code}, limit: ${data.entitlement?.limit}, count: ${data.entitlement?.currentCount})`,
+      };
+    });
+
+    await testCase("CAP-07", "Public booking with a new client is rejected when therapist is at or over cap (403 FEATURE_RESTRICTED)", async () => {
+      const res = await fetch(`${baseUrl}/api/scheduling/public/${overcapTherapist.slug}/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: "Brand New Public Client",
+          clientEmail: `brandnew.public.${overcapUnique}@example.com`,
+          clientPhone: "+919876543210",
+          duration: 30,
+          startTime: "2026-12-20T10:00:00.000Z",
+        }),
+      });
+      const data = await res.json();
+      return {
+        pass: res.status === 403 && data.code === "FEATURE_RESTRICTED",
+        expected: "403 FEATURE_RESTRICTED on public booking for new client",
+        actual: `${res.status} (code: ${data.code}, message: ${data.message})`,
+      };
+    });
+
+    await testCase("CAP-08", "Existing clients remain accessible and can book sessions when practice is over the cap", async () => {
+      // 1. Existing clients list accessible
+      const listRes = await fetch(`${baseUrl}/api/clients`, {
+        headers: { Authorization: `Bearer ${overcapToken}` },
+      });
+      const listData = await listRes.json();
+      const canList = listRes.status === 200 && listData.total >= 21;
+
+      // 2. Single existing client details accessible
+      const targetClient = overcapClients[0];
+      const getRes = await fetch(`${baseUrl}/api/clients/${targetClient._id}`, {
+        headers: { Authorization: `Bearer ${overcapToken}` },
+      });
+      const getData = await getRes.json();
+      const canGet = getRes.status === 200 && getData.data?._id === targetClient._id.toString();
+
+      // 3. Update existing client fields without changing status
+      const putRes = await fetch(`${baseUrl}/api/clients/${targetClient._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${overcapToken}`,
+        },
+        body: JSON.stringify({
+          phone: "+919111122222",
+          occupation: "Software Engineer",
+        }),
+      });
+      const putData = await putRes.json();
+      const canUpdate = putRes.status === 200 && putData.data?.occupation === "Software Engineer";
+
+      // 4. Existing client books a follow-up appointment successfully
+      const bookRes = await fetch(`${baseUrl}/api/scheduling/public/${overcapTherapist.slug}/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: targetClient.name,
+          clientEmail: targetClient.email,
+          clientPhone: targetClient.phone,
+          duration: 30,
+          startTime: "2026-12-20T11:00:00.000Z",
+        }),
+      });
+      const bookData = await bookRes.json();
+      const canBook = bookRes.status === 201 && bookData.data?.clientId === targetClient._id.toString();
+
+      return {
+        pass: canList && canGet && canUpdate && canBook,
+        expected: "All operations on existing clients succeed (list, get, update, book)",
+        actual: `canList: ${canList}, canGet: ${canGet}, canUpdate: ${canUpdate}, canBook: ${canBook}`,
+      };
+    });
+
+    await testCase("CAP-09", "Higher-tier limits work correctly (Pro tier allows up to 25 and blocks at 25, Premium allows beyond 25)", async () => {
+      // Therapist B is on Pro tier (limit 25)
+      // Add active clients to Therapist B up to 25
+      const proClientsToAdd = 25;
+      const proPromises = [];
+      for (let i = 1; i <= proClientsToAdd; i++) {
+        proPromises.push(
+          Client.create({
+            therapist_id: therapistB.id,
+            name: `Pro Client ${i}`,
+            email: `pro.client.${i}.${uniqueId}@example.com`,
+            status: "active",
+          })
+        );
+      }
+      await Promise.all(proPromises);
+
+      // Attempting 26th client on Pro tier must be rejected with 403
+      const proRejectRes = await fetch(`${baseUrl}/api/clients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${therapistB.token}`,
+        },
+        body: JSON.stringify({
+          name: "Pro Client 26",
+          email: `pro.client.26.${uniqueId}@example.com`,
+          status: "active",
+        }),
+      });
+      const proRejectData = await proRejectRes.json();
+      const proBlocked =
+        proRejectRes.status === 403 &&
+        proRejectData.code === "FEATURE_RESTRICTED" &&
+        proRejectData.entitlement?.limit === 25;
+
+      // Upgrade Therapist B to Premium tier (unlimited active clients)
+      await fetch(`${baseUrl}/api/subscriptions/tier`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${therapistB.token}`,
+        },
+        body: JSON.stringify({ tier: "premium" }),
+      });
+
+      // Creating 26th client on Premium tier must now succeed
+      const premRes = await fetch(`${baseUrl}/api/clients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${therapistB.token}`,
+        },
+        body: JSON.stringify({
+          name: "Premium Client 26",
+          email: `premium.client.26.${uniqueId}@example.com`,
+          status: "active",
+        }),
+      });
+      const premData = await premRes.json();
+      const premAllowed = premRes.status === 201 && premData.data?.status === "active";
+
+      // Reset Therapist B back to Pro for subsequent tests
+      await fetch(`${baseUrl}/api/subscriptions/tier`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${therapistB.token}`,
+        },
+        body: JSON.stringify({ tier: "pro" }),
+      });
+
+      return {
+        pass: proBlocked && premAllowed,
+        expected: "Pro blocks at 25 (403), Premium permits beyond 25 (201)",
+        actual: `proBlocked: ${proBlocked}, premAllowed: ${premAllowed}`,
       };
     });
 
@@ -585,8 +808,9 @@ async function runEntitlementsAnalyticsTestSuite() {
       await Therapist.deleteMany({ email: new RegExp(uniqueId) });
       await Client.deleteMany({ email: new RegExp(uniqueId) });
       await Payment.deleteMany({ therapistId: { $in: [therapistA.id, therapistB.id] } });
-      await Booking.deleteMany({ therapistId: { $in: [therapistA.id, therapistB.id] } });
+      await Booking.deleteMany({ therapistId: { $in: [therapistA.id, therapistB.id, overcapTherapist?._id] } });
       await Note.deleteMany({ therapistId: { $in: [therapistA.id, therapistB.id] } });
+      await Availability.deleteMany({ therapistId: { $in: [therapistA.id, therapistB.id, overcapTherapist?._id] } });
     } catch (_) {}
 
     await mongoose.disconnect();

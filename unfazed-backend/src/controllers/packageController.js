@@ -8,6 +8,7 @@ const { createOrder } = require("../services/razorpayService");
 const { CURRENCY, calculatePaymentBreakdown } = require("../config/paymentConfig");
 const { getPublicKeyId, isRazorpayConfigured } = require("../config/razorpay");
 const { syncClientForBooking } = require("./bookingController");
+const { canAccess } = require("../services/entitlementService");
 
 /**
  * List all packages created by the authenticated therapist.
@@ -666,6 +667,26 @@ const initiatePublicPackagePurchase = async (req, res) => {
       });
     }
 
+    // Check if client already exists for this therapist; if not, enforce active-client cap
+    const existingClientForCap = await Client.findOne({
+      therapist_id: therapist._id,
+      email: normalizedEmail,
+    });
+
+    if (!existingClientForCap) {
+      const entitlement = await canAccess(therapist._id, "active_clients");
+      if (!entitlement.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "FEATURE_RESTRICTED",
+          message:
+            entitlement.reason ||
+            "This practice has reached its maximum client capacity and cannot accept new clients.",
+          entitlement,
+        });
+      }
+    }
+
     // Safely sync client record for this therapist
     const clientDoc = await syncClientForBooking({
       therapistId: therapist._id,
@@ -726,6 +747,15 @@ const initiatePublicPackagePurchase = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.code === "FEATURE_RESTRICTED" || error.status === 403 || error.statusCode === 403) {
+      return res.status(403).json({
+        success: false,
+        code: "FEATURE_RESTRICTED",
+        message: error.message,
+        entitlement: error.entitlement,
+      });
+    }
+
     console.error("Error initiating public package purchase:", error);
     return res.status(500).json({
       success: false,

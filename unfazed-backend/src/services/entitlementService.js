@@ -16,8 +16,14 @@ class EntitlementService {
   async resolveTherapistSubscription(therapistOrId) {
     let therapist = therapistOrId;
 
-    if (!therapist || typeof therapist === "string" || therapist instanceof mongoose.Types.ObjectId) {
-      therapist = await Therapist.findById(therapistOrId);
+    if (
+      !therapist ||
+      typeof therapist === "string" ||
+      therapist instanceof mongoose.Types.ObjectId ||
+      (therapist._id && (!therapist.subscription || typeof therapist.subscription.tier !== "string"))
+    ) {
+      const id = therapist?._id || therapist;
+      therapist = await Therapist.findById(id);
     }
 
     if (!therapist) {
@@ -89,7 +95,12 @@ class EntitlementService {
 
       // null activeClientsCap indicates unlimited clients (Premium tier)
       if (config.activeClientsCap !== null && activeCount >= config.activeClientsCap) {
-        const requiredTier = tier === SUBSCRIPTION_TIERS.STARTER ? SUBSCRIPTION_TIERS.PRO : SUBSCRIPTION_TIERS.PREMIUM;
+        const requiredTier =
+          activeCount >= 25
+            ? SUBSCRIPTION_TIERS.PREMIUM
+            : tier === SUBSCRIPTION_TIERS.STARTER
+            ? SUBSCRIPTION_TIERS.PRO
+            : SUBSCRIPTION_TIERS.PREMIUM;
         return {
           allowed: false,
           featureKey: "active_clients",
